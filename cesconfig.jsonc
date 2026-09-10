@@ -1,0 +1,42 @@
+// This is an optional configuration file used primarily for debugging purposes when reporting issues.
+// It is safe to delete this file as it does not affect the functionality of your application.
+{
+  "cesVersion": "2.23.2",
+  "projectName": "Habit-Tracker-v2",
+  "packages": [
+    {
+      "name": "expo-router",
+      "type": "navigation",
+      "options": {
+        "type": "tabs"
+      }
+    },
+    {
+      "name": "nativewind",
+      "type": "styling"
+    },
+    {
+      "name": "zustand",
+      "type": "state-management"
+    }
+  ],
+  "flags": {
+    "noGit": false,
+    "noInstall": false,
+    "overwrite": false,
+    "importAlias": true,
+    "packageManager": "npm",
+    "eas": false,
+    "publish": false
+  },
+  "packageManager": {
+    "type": "npm",
+    "version": "10.9.8"
+  },
+  "os": {
+    "type": "Linux",
+    "platform": "android",
+    "arch": "arm64",
+    "kernelVersion": "4.19.191+"
+  }
+}

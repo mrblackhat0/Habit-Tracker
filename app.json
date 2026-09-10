@@ -1,11 +1,13 @@
 {
   "expo": {
-    "name": "Habit-Tracker-v2",
-    "slug": "habit-tracker-v2",
+    "name": "Habit-Tracker",
+    "slug": "habit-tracker",
     "version": "1.0.0",
-
-    "scheme": "habit-tracker-v2",
-    "platforms": ["ios", "android"],
+    "scheme": "habit-tracker",
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -17,29 +19,55 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#0D0D12"
         }
-      ]
+      ],
+      "expo-sqlite",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a profile photo to personalize your habit profile",
+          "cameraPermission": "Allow camera to take a profile photo"
+        }
+      ],
+      "./plugins/with-notification-icon.js"
     ],
     "experiments": {
       "typedRoutes": true,
-
       "tsconfigPaths": true
     },
-
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-
-    "userInterfaceStyle": "light",
-
-    "assetBundlePatterns": ["**/*"],
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/AppIcon.icon"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundColor": "#0D0D12",
+        "monochromeImage": "./assets/adaptive-foreground.png"
+      },
+      "package": "com.rrr143246.habittracker",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.FOREGROUND_SERVICE_SHORT_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+        "android.permission.WAKE_LOCK",
+        "android.permission.CAMERA"
+      ]
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "56244fad-ca8c-464c-8ccf-e07da9123992"
       }
     }
   }

@@ -50,7 +50,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-foreground.png",
-        "backgroundColor": "#0D0D12",
+        "backgroundColor": "#6366F1",
         "monochromeImage": "./assets/adaptive-foreground.png"
       },
       "package": "com.rrr143246.habittracker",

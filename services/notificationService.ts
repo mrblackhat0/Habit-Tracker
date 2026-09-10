@@ -93,7 +93,7 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
           asForegroundService: true,
           ongoing: true,
           color: Colors.primary,
-          smallIcon: 'ic_launcher',
+          smallIcon: 'ic_notification',
           showChronometer: true,
           chronometerDirection: session.mode === 'timer' ? 'down' : 'up',
           timestamp,
@@ -132,7 +132,7 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
           asForegroundService: false,
           ongoing: true,
           color: Colors.primary,
-          smallIcon: 'ic_launcher',
+          smallIcon: 'ic_notification',
           pressAction: { id: 'default' },
           showTimestamp: true,
           showChronometer: false,
@@ -176,7 +176,7 @@ export async function stopSessionNotification(
         autoCancel: true,
         showTimestamp: true,
         color: Colors.primary,
-        smallIcon: 'ic_launcher',
+        smallIcon: 'ic_notification',
         showChronometer: false,
         pressAction: { id: 'default' },
       },
@@ -392,7 +392,7 @@ export async function syncHabitReminder(
           data: { habitId: String(habitId) },
           android: {
             channelId: REMINDER_CHANNEL_ID,
-            smallIcon: 'ic_launcher',
+            smallIcon: 'ic_notification',
             color: Colors.primary,
             showTimestamp: true,
             pressAction: {
@@ -436,7 +436,7 @@ export async function scheduleWeeklyOverview(enabled: boolean) {
         data: { type: 'weekly_overview' },
         android: {
           channelId: WEEKLY_CHANNEL_ID,
-          smallIcon: 'ic_launcher',
+          smallIcon: 'ic_notification',
           showTimestamp: true,
           color: Colors.primary,
           pressAction: { id: 'default' },
@@ -523,7 +523,7 @@ export async function handleRescheduleAction(
         data: { habitId: String(habitId) },
         android: {
           channelId: REMINDER_CHANNEL_ID,
-          smallIcon: 'ic_launcher',
+          smallIcon: 'ic_notification',
           color: Colors.primary,
           showTimestamp: true,
           pressAction: {

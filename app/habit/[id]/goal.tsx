@@ -1,5 +1,6 @@
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, BackHandler } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { useHabitStore } from '@/store/habitStore';
@@ -11,6 +12,23 @@ export default function GoalScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const habitId = Number(id);
   const habit = useHabitStore((state) => state.habits.find((h) => h.id === habitId));
+
+  // ponytail: when launched from killed state directly to goal, no back stack -> back should go details -> home
+  const handleBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace({ pathname: '/habit/[id]', params: { id: String(habitId) } });
+  };
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!router.canGoBack()) {
+        handleBack();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [habitId]);
 
   if (!habit) {
     return (
@@ -26,7 +44,17 @@ export default function GoalScreen() {
 
   return (
     <View className="flex-1 bg-background px-4 pt-2 border-t border-border">
-      <Stack.Screen options={{ title: 'Goal', headerBackTitle: 'Back' }} />
+      <Stack.Screen
+        options={{
+          title: 'Goal',
+          headerBackTitle: 'Back',
+          headerLeft: () => (
+            <Pressable onPress={handleBack} hitSlop={8} style={{ paddingRight: 12 }}>
+              <Ionicons name="chevron-back" size={24} color={Colors.text} />
+            </Pressable>
+          ),
+        }}
+      />
         <>
           {habit.progressType === 'duration' && <Focus habit={habit} />}
           {habit.progressType === 'quantity' && <QuantityGoalTracker habit={habit} />}

@@ -8,91 +8,16 @@ import { ActiveSession, seedDailyTotal } from '@/db/focus';
 import { Habit, getLogsForHabit, getHabitById, logCompletion } from '@/db/habits';
 import { Colors } from '@/constants/Colors';
 import { getTodayDateStr } from '@/utils/dates';
-import { useStore } from '@/store/store';
 
 const TIMER_CHANNEL_ID = 'timer_channel';
 const STOPWATCH_CHANNEL_ID = 'stopwatch_channel';
 
 let channelsInitialized = false;
 
-// ponytail: ic_notification asset is full-color 72px PNG and android/ folder is
-// excluded from copy, so it may be missing/invalid at runtime. Fall back to
-// ic_launcher (guaranteed after prebuild, .webp) instead of crashing.
-async function safeDisplayNotification(payload: any) {
-  try {
-    console.log('[notifee] displayNotification try', payload.id, payload.android?.smallIcon, payload.android?.channelId, JSON.stringify(payload.android).slice(0,300));
-    await notifee.displayNotification(payload);
-    console.log('[notifee] displayNotification success', payload.id);
-    try {
-      const displayed = await notifee.getDisplayedNotifications();
-      console.log('[notifee] displayed count', displayed.length, displayed.map((n:any)=>n.id));
-      const ch = await notifee.getChannel(payload.android?.channelId).catch(()=>null);
-      console.log('[notifee] channel check', payload.android?.channelId, ch);
-    } catch (e:any) { console.log('[notifee] displayed check failed', e?.message); }
-  } catch (e: any) {
-    const msg = String(e?.message ?? e);
-    if (msg.includes('small icon') || msg.includes('Invalid notification')) {
-      // ponytail: ic_notification is colored 72px, fails for non-foreground (paused/stop) on Android 13+.
-      // Try ic_launcher directly — no WARN, just log.
-      console.log('[notifee] displayNotification failed, retry with ic_launcher', payload.id, msg);
-      try {
-        await notifee.displayNotification({ ...payload, android: { ...payload.android, smallIcon: 'ic_launcher' } });
-        console.log('[notifee] retry ic_launcher success', payload.id);
-        return;
-      } catch (e2: any) {
-        console.log('[notifee] retry ic_launcher failed', e2?.message ?? e2);
-      }
-      try {
-        console.log('[notifee] retry with ic_launcher_round', payload.id);
-        await notifee.displayNotification({ ...payload, android: { ...payload.android, smallIcon: 'ic_launcher_round' } });
-        console.log('[notifee] retry ic_launcher_round success', payload.id);
-        return;
-      } catch (e3: any) {
-        console.log('[notifee] retry ic_launcher_round failed', e3?.message ?? e3);
-      }
-      try {
-        const { smallIcon: _omit, ...androidRest } = payload.android ?? {};
-        console.log('[notifee] retry without smallIcon', payload.id);
-        await notifee.displayNotification({ ...payload, android: androidRest });
-        console.log('[notifee] retry without smallIcon success', payload.id);
-        return;
-      } catch (e4: any) {
-        console.log('[notifee] retry without smallIcon failed', e4?.message ?? e4);
-      }
-    } else {
-      console.warn('[notifee] displayNotification failed', payload.id, e?.message ?? e);
-    }
-    throw e;
-  }
-}
-
-async function safeCreateTriggerNotification(payload: any, trigger: any) {
-  try {
-    await notifee.createTriggerNotification(payload, trigger);
-  } catch (e: any) {
-    const msg = String(e?.message ?? e);
-    if (msg.includes('small icon') || msg.includes('Invalid notification')) {
-      try {
-        await notifee.createTriggerNotification({ ...payload, android: { ...payload.android, smallIcon: 'ic_launcher' } }, trigger);
-        return;
-      } catch {}
-      try {
-        const { smallIcon: _omit, ...androidRest } = payload.android ?? {};
-        await notifee.createTriggerNotification({ ...payload, android: androidRest }, trigger);
-        return;
-      } catch {}
-    }
-    throw e;
-  }
-}
-
 export async function initNotificationChannels() {
   if (channelsInitialized) return;
   try {
-    const perm = await notifee.requestPermission();
-    console.log('[notifee] requestPermission', perm);
-    const settings = await notifee.getNotificationSettings().catch(()=>null);
-    console.log('[notifee] settings after perm', settings);
+    await notifee.requestPermission();
 
     await notifee.createChannel({
       id: TIMER_CHANNEL_ID,
@@ -109,7 +34,6 @@ export async function initNotificationChannels() {
     });
 
     channelsInitialized = true;
-    console.log('[notifee] channels initialized');
   } catch (e) {
     console.warn('Notifee channel initialization failed:', e);
   }
@@ -122,20 +46,7 @@ function getNotificationId(habitId: number, dateStr?: string): string {
 
 export async function updateSessionNotification(session: ActiveSession, habit: Habit) {
   try {
-    const focusEnabled = useStore.getState().focusNotificationsEnabled;
-    console.log('[notifee] updateSessionNotification start', { habitId: habit.id, mode: session.mode, status: session.status, focusEnabled });
-    if (!focusEnabled) {
-      console.log('[notifee] focusNotifications disabled — cancelling');
-      try {
-        await notifee.cancelNotification(getNotificationId(habit.id));
-      } catch {}
-      try {
-        await (notifee as any).stopForegroundService?.();
-      } catch {}
-      return;
-    }
     await initNotificationChannels();
-    console.log('[notifee] channels ready, perms', await notifee.getNotificationSettings().catch(()=>null));
 
     const channelId = session.mode === 'timer' ? TIMER_CHANNEL_ID : STOPWATCH_CHANNEL_ID;
     const notificationId = getNotificationId(habit.id);
@@ -171,59 +82,34 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
         timestamp = now - totalElapsedMs;
       }
 
-      try {
-        await safeDisplayNotification({
-          id: notificationId,
-          title: habit.name,
-          body: undefined,
-          subtitle: undefined,
-          data: { habitId: String(habit.id) },
-          android: {
-            channelId,
-            asForegroundService: true,
-            ongoing: true,
-            color: Colors.primary,
-            smallIcon: 'ic_notification',
-            showChronometer: true,
-            chronometerDirection: session.mode === 'timer' ? 'down' : 'up',
-            timestamp,
-            pressAction: { id: 'default' },
-            actions: [
-              {
-                title: 'Pause',
-                pressAction: { id: 'pause' },
-              },
-              {
-                title: 'Stop',
-                pressAction: { id: 'stop' },
-              },
-            ],
-          },
-        });
-      } catch (e) {
-        console.warn('Foreground display failed, falling back to ongoing notification:', e);
-        await safeDisplayNotification({
-          id: notificationId,
-          title: habit.name,
-          body: undefined,
-          data: { habitId: String(habit.id) },
-          android: {
-            channelId,
-            ongoing: true,
-            autoCancel: false,
-            color: Colors.primary,
-            smallIcon: 'ic_notification',
-            showChronometer: true,
-            chronometerDirection: session.mode === 'timer' ? 'down' : 'up',
-            timestamp,
-            pressAction: { id: 'default' },
-            actions: [
-              { title: 'Pause', pressAction: { id: 'pause' } },
-              { title: 'Stop', pressAction: { id: 'stop' } },
-            ],
-          },
-        });
-      }
+      await notifee.displayNotification({
+        id: notificationId,
+        title: habit.name,
+        body: undefined,
+        subtitle: undefined,
+        data: { habitId: String(habit.id) },
+        android: {
+          channelId,
+          asForegroundService: true,
+          ongoing: true,
+          color: Colors.primary,
+          smallIcon: 'ic_launcher',
+          showChronometer: true,
+          chronometerDirection: session.mode === 'timer' ? 'down' : 'up',
+          timestamp,
+          pressAction: { id: 'default' },
+          actions: [
+            {
+              title: 'Pause',
+              pressAction: { id: 'pause' },
+            },
+            {
+              title: 'Stop',
+              pressAction: { id: 'stop' },
+            },
+          ],
+        },
+      });
     } else {
       const totalElapsedMs = previousLoggedMs + currentElapsedMs;
 
@@ -236,7 +122,7 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
         body = `Paused — ${remainingMins}m left of ${sessionTargetMins}m ${label}`;
       }
 
-      await safeDisplayNotification({
+      await notifee.displayNotification({
         id: notificationId,
         title: habit.name,
         body,
@@ -274,22 +160,13 @@ export async function stopSessionNotification(
   totalMinsToday: number
 ) {
   try {
-    if (!useStore.getState().focusNotificationsEnabled) {
-      try {
-        await notifee.cancelNotification(getNotificationId(habitId));
-      } catch {}
-      try {
-        await (notifee as any).stopForegroundService?.();
-      } catch {}
-      return;
-    }
     await initNotificationChannels();
     const notificationId = getNotificationId(habitId);
 
     await notifee.cancelNotification(notificationId);
-    try { await notifee.stopForegroundService(); } catch {}
+    await notifee.stopForegroundService();
 
-    await safeDisplayNotification({
+    await notifee.displayNotification({
       id: notificationId,
       title: habitName,
       body: `${totalMinsToday}m logged today ✓`,
@@ -382,7 +259,7 @@ export async function cancelHabitReminders(habitId: number) {
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
     try {
       await notifee.cancelNotification(`habit_reminder_${habitId}_day_${dayIndex}`);
-    } catch {}
+    } catch (_) {}
   }
 }
 
@@ -457,14 +334,24 @@ export async function syncHabitReminder(
 
   await initReminderChannel();
 
-  // formatted reminder time for title e.g. "7:00 AM"
-  const _tmpDate = new Date();
-  _tmpDate.setHours(hours, minutes, 0, 0);
-  const reminderTimeLabel = _tmpDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
+  // ponytail: Android 12+ exact alarm - check permission and log triggers for when app closed
+  try {
+    const settings: any = await notifee.getNotificationSettings();
+    console.log('[notifee] trigger check settings', settings?.android?.alarm);
+    if (settings?.android?.alarm === 0) {
+      console.warn('[notifee] exact alarm denied - triggers will not fire when app closed');
+      try { await (notifee as any).openAlarmPermissionSettings?.(); } catch {}
+    }
+  } catch {}
+  // battery optimization hint
+  try {
+    const { Platform } = require('react-native');
+    if (Platform.OS === 'android') {
+      const { default: notifeeLib } = await import('@notifee/react-native');
+      // notifee doesn't expose battery check, just log
+      console.log('[notifee] check battery optimization - ensure app not battery optimized');
+    }
+  } catch {}
 
   const habit = await getHabitById(habitId);
   const actions = habit
@@ -498,11 +385,10 @@ export async function syncHabitReminder(
     };
 
     try {
-      await safeCreateTriggerNotification(
+      await notifee.createTriggerNotification(
         {
           id: `habit_reminder_${habitId}_day_${dayOfWeek}`,
-          title: `Reminder: ${habitName} — ${reminderTimeLabel}`,
-          body: 'Time to get moving',
+          title: `Reminder: ${habitName}`,
           data: { habitId: String(habitId) },
           android: {
             channelId: REMINDER_CHANNEL_ID,
@@ -517,10 +403,15 @@ export async function syncHabitReminder(
         },
         trigger
       );
+      console.log('[notifee] scheduled trigger', `habit_reminder_${habitId}_day_${dayOfWeek}`, new Date(timestamp).toString());
     } catch (e) {
       console.warn(`Failed to schedule reminder trigger for day ${dayOfWeek}:`, e);
     }
   }
+  try {
+    const triggers = await (notifee as any).getTriggerNotifications?.();
+    console.log('[notifee] total triggers after schedule', triggers?.length ?? 'unknown', triggers?.map?.((t:any)=>t.notification?.id));
+  } catch {}
 }
 
 export async function scheduleWeeklyOverview(enabled: boolean) {
@@ -537,7 +428,7 @@ export async function scheduleWeeklyOverview(enabled: boolean) {
       timestamp,
       repeatFrequency: RepeatFrequency.WEEKLY,
     };
-    await safeCreateTriggerNotification(
+    await notifee.createTriggerNotification(
       {
         id: WEEKLY_ID,
         title: 'Weekly overview 📊',
@@ -546,6 +437,7 @@ export async function scheduleWeeklyOverview(enabled: boolean) {
         android: {
           channelId: WEEKLY_CHANNEL_ID,
           smallIcon: 'ic_launcher',
+          showTimestamp: true,
           color: Colors.primary,
           pressAction: { id: 'default' },
         },
@@ -624,11 +516,10 @@ export async function handleRescheduleAction(
       timestamp: snoozeTime,
     };
 
-    await safeCreateTriggerNotification(
+    await notifee.createTriggerNotification(
       {
         id: `habit_reminder_${habitId}_rescheduled_${snoozeTime}`,
         title: `Reminder: ${habit.name}`,
-        body: 'Time to get moving',
         data: { habitId: String(habitId) },
         android: {
           channelId: REMINDER_CHANNEL_ID,

@@ -10,9 +10,10 @@ import {
   updateSessionNotification,
   stopSessionNotification,
   handleMarkCompletedAction,
+  handleRescheduleAction,
   handleStartTimerAction,
   handlePlusOneAction,
-} from '@/services/notificationService';
+} from '../services/notificationService';
 import { router } from 'expo-router';
 
 function getTodayDateStr() {
@@ -26,10 +27,17 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
   if (type === EventType.PRESS && detail.pressAction?.id === 'default') {
     const habitId = detail.notification?.data?.habitId;
     if (habitId) {
-      router.navigate({
-        pathname: '/habit/[id]/goal',
-        params: { id: habitId.toString() },
-      });
+      try {
+        const habit = await getHabitById(Number(habitId));
+        if (habit && habit.progressType !== 'check') {
+          router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+          setTimeout(() => router.navigate({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } }), 80);
+        } else {
+          router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+        }
+      } catch {
+        router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+      }
     }
   }
   if (type !== EventType.ACTION_PRESS || !detail.pressAction?.id) return;
@@ -50,7 +58,7 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
         if (habit) await updateSessionNotification(resumed, habit);
       }
     } else if (actionId === 'stop') {
-      const result = resolveActiveSession();
+      const result = resolveActiveSession(); // { habitId, durationMs } | null
       if (result) {
         const habit = await getHabitById(result.habitId);
         if (habit) {
@@ -72,8 +80,7 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
     } else if (actionId === 'reschedule') {
       const habitId = detail.notification?.data?.habitId;
       if (habitId) {
-        try { await notifee.cancelNotification(detail.notification?.id); } catch {}
-        router.navigate({ pathname: '/habit/[id]', params: { id: String(habitId), reschedule: '1' } });
+        await handleRescheduleAction(parseInt(habitId, 10), detail.notification?.id);
       }
     } else if (actionId === 'start_timer') {
       const habitId = detail.notification?.data?.habitId;

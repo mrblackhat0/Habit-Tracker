@@ -70,14 +70,27 @@ export default function RootLayout() {
         }, 1500);
       }
     }
-    notifee.getInitialNotification().then((initial) => {
+    notifee.getInitialNotification().then(async (initial) => {
       if (initial?.pressAction?.id === 'default') {
         const habitId = initial.notification.data?.habitId;
         if (habitId) {
-          router.navigate({
-            pathname: '/habit/[id]/goal',
-            params: { id: habitId.toString() },
-          });
+          try {
+            const { getHabitById } = await import('@/db/habits');
+            const habit = await getHabitById(Number(habitId));
+            if (habit && habit.progressType !== 'check') {
+              // build stack: home -> details -> goal so back goes goal->details->home
+              router.dismissAll?.();
+              router.replace('/(tabs)');
+              setTimeout(() => {
+                router.push({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+                setTimeout(() => router.push({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } }), 150);
+              }, 100);
+            } else {
+              router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+            }
+          } catch {
+            router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+          }
         }
       }
     });
@@ -148,10 +161,20 @@ export default function RootLayout() {
       } else if (type === EventType.PRESS && detail.pressAction?.id === 'default') {
         const habitId = detail.notification?.data?.habitId;
         if (habitId) {
-          router.navigate({
-            pathname: '/habit/[id]/goal',
-            params: { id: habitId.toString() },
-          });
+          (async () => {
+            try {
+              const { getHabitById } = await import('@/db/habits');
+              const habit = await getHabitById(Number(habitId));
+              if (habit && habit.progressType !== 'check') {
+                router.push({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+                setTimeout(() => router.push({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } }), 80);
+              } else {
+                router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+              }
+            } catch {
+              router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+            }
+          })();
         }
       }
     });
@@ -190,6 +213,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="addHabit" options={{ headerShown: true }} />
             <Stack.Screen name="habit/[id]" options={{ headerShown: true }} />
+            <Stack.Screen name="habit/[id]/goal" options={{ headerShown: true, headerBackTitle: 'Back' }} />
           </Stack>
         </ThemeProvider>
       </SQLiteProvider>

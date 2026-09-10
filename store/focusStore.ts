@@ -52,63 +52,53 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
 
   startSession: (habitId: number, mode: FocusMode, targetGoalMs?: number | null) => {
     const current = getActiveSession();
-    console.log('[focusStore] startSession request', { habitId, mode, current });
     if (current) {
-      console.log('[focusStore] blocked — active session exists', current);
+      // Single active-session lock: Block starting new session if occupied
       return false;
     }
 
     const newSession = startActiveSession({ habitId, mode, targetGoalMs });
-    console.log('[focusStore] newSession created', newSession);
     set({ activeSession: newSession });
 
     getHabitById(habitId).then((habit) => {
-      console.log('[focusStore] getHabitById for notification', habit);
-      if (habit) updateSessionNotification(newSession, habit).catch(e=>console.warn('[focusStore] updateSessionNotification failed', e));
-      else console.warn('[focusStore] habit not found for notification', habitId);
-    }).catch(e=>console.warn('[focusStore] getHabitById failed', e));
+      if (habit) updateSessionNotification(newSession, habit);
+    });
     return true;
   },
 
   pauseSession: () => {
     const current = get().activeSession;
-    console.log('[focusStore] pauseSession', current);
     if (!current || current.status === 'paused') return;
 
     const paused = pauseActiveSession();
-    console.log('[focusStore] paused', paused);
     set({ activeSession: paused });
 
     if (paused) {
       getHabitById(paused.habitId).then((habit) => {
-        if (habit) updateSessionNotification(paused, habit).catch(e=>console.warn('[focusStore] pause update failed', e));
+        if (habit) updateSessionNotification(paused, habit);
       });
     }
   },
 
   resumeSession: () => {
     const current = get().activeSession;
-    console.log('[focusStore] resumeSession', current);
     if (!current || current.status === 'running') return;
 
     const resumed = resumeActiveSession();
-    console.log('[focusStore] resumed', resumed);
     set({ activeSession: resumed, stalePrompt: null });
 
     if (resumed) {
       getHabitById(resumed.habitId).then((habit) => {
-        if (habit) updateSessionNotification(resumed, habit).catch(e=>console.warn('[focusStore] resume update failed', e));
+        if (habit) updateSessionNotification(resumed, habit);
       });
     }
   },
 
   stopSession: () => {
     const current = get().activeSession;
-    console.log('[focusStore] stopSession', current);
     if (!current) return;
 
     const result = resolveActiveSession();
-    console.log('[focusStore] resolve result', result);
     set({ activeSession: null, stalePrompt: null });
     useHabitStore.getState().loadHabits();
 
@@ -118,10 +108,9 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
           const todayStr = getTodayDateStr();
           const dailyTotalMs = getDailyTotalMs(habit.id, todayStr);
           const totalMinsToday = Math.round(dailyTotalMs / 60000);
-          console.log('[focusStore] stopSessionNotification', habit.id, totalMinsToday);
-          stopSessionNotification(habit.id, habit.name, totalMinsToday).catch(e=>console.warn('[focusStore] stop notif failed', e));
+          stopSessionNotification(habit.id, habit.name, totalMinsToday);
         }
-      }).catch(e=>console.warn('[focusStore] getHabitById stop failed', e));
+      });
     }
   },
 
@@ -136,7 +125,7 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
     const { db } = require('../db/habits');
     try {
       db.runSync(`DELETE FROM active_session WHERE id = 1`);
-    } catch {}
+    } catch (_) {}
 
     set({ activeSession: null, stalePrompt: null });
     useHabitStore.getState().loadHabits();

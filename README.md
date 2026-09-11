@@ -2,7 +2,7 @@
   <img src="./app_icon.png" width="120" height="120" alt="Habit Tracker Icon" />
 </p>
 
-<h1 align="center">⚡ Habit-Tracker</h1>
+<h1 align="center"><img src="./app_icon.png" width="36" height="36" alt="Habit Tracker Icon" style="vertical-align: middle; border-radius: 8px;" /> Habit-Tracker</h1>
 
 <p align="center">
   A sleek, offline-first personal habit tracker and focus application built with <strong>React Native</strong>, <strong>Expo</strong>, <strong>NativeWind (Tailwind CSS)</strong>, <strong>SQLite</strong>, and <strong>Notifee</strong>.<br/>

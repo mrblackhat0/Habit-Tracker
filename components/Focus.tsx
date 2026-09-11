@@ -249,12 +249,12 @@ export default function Focus({ habit }: FocusProps) {
     return Math.min(100, Math.round((totalAccumulated / fullGoalMs) * 100));
   }, [mode, fullGoalMs, isUiReset, isCurrentHabitActive, elapsedMs, targetGoalMs, todayLoggedMs]);
 
-  const handleStart = async () => {
+  const handleStart = () => {
     setLockErrorMessage(null);
-    try {
-      const { requestNotificationPermission } = await import('@/services/notificationService');
-      await requestNotificationPermission();
-    } catch {}
+    // Don't block first start on permission/channel creation (slow on 1st call) — fire in background
+    import('@/services/notificationService')
+      .then((m) => m.requestNotificationPermission().catch(() => {}))
+      .catch(() => {});
     let targetMs: number | null = null;
     if (mode === 'timer') {
       const fullGoal = selectedGoalMins * 60 * 1000;

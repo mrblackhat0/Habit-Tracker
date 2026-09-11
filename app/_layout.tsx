@@ -97,6 +97,10 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, hydrated]);
 
   useEffect(() => {
+    // Warm notification channels in background so first timer start is instant
+    import('@/services/notificationService')
+      .then((m) => m.initNotificationChannels().catch(() => {}))
+      .catch(() => {});
     // Load focus session state and check stale session on startup
     useFocusStore.getState().loadActiveSession();
 

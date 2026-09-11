@@ -107,20 +107,18 @@ export const useStore = create<AppState>((set, get) => ({
         })
         .catch(() => {});
     } else {
-      // re-show if session is active
-      import('@/store/focusStore').then(({ useFocusStore }) => {
-        const s = useFocusStore.getState().activeSession;
-        if (s) {
-          import('@/db/habits').then(({ getHabitById }) =>
-            getHabitById(s.habitId).then((h: any) => {
-              if (h)
-                import('@/services/notificationService').then(({ updateSessionNotification }) =>
-                  updateSessionNotification(s, h)
-                );
-            })
-          );
-        }
-      });
+      // re-show if session is active — fetch fresh from DB (covers headless) then update
+      (async () => {
+        try {
+          const { getActiveSession } = await import('@/db/focus');
+          const { getHabitById } = await import('@/db/habits');
+          const { updateSessionNotification } = await import('@/services/notificationService');
+          const s = getActiveSession() ?? (await import('@/store/focusStore')).useFocusStore.getState().activeSession;
+          if (!s) return;
+          const h: any = await getHabitById(s.habitId);
+          if (h) await updateSessionNotification(s, h);
+        } catch {}
+      })();
     }
   },
 

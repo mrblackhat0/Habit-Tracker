@@ -52,30 +52,35 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
 
   startSession: (habitId: number, mode: FocusMode, targetGoalMs?: number | null) => {
     const current = getActiveSession();
+    console.log('[focusStore] startSession', { habitId, mode, current });
     if (current) {
-      // Single active-session lock: Block starting new session if occupied
+      console.log('[focusStore] blocked');
       return false;
     }
 
     const newSession = startActiveSession({ habitId, mode, targetGoalMs });
+    console.log('[focusStore] newSession', newSession);
     set({ activeSession: newSession });
 
     getHabitById(habitId).then((habit) => {
-      if (habit) updateSessionNotification(newSession, habit);
+      console.log('[focusStore] getHabit', habit);
+      if (habit) updateSessionNotification(newSession, habit).then(()=>console.log('[focusStore] update done')).catch(e=>console.warn('[focusStore] update failed', e));
     });
     return true;
   },
 
   pauseSession: () => {
     const current = get().activeSession;
+    console.log('[focusStore] pause', current);
     if (!current || current.status === 'paused') return;
 
     const paused = pauseActiveSession();
+    console.log('[focusStore] paused', paused);
     set({ activeSession: paused });
 
     if (paused) {
       getHabitById(paused.habitId).then((habit) => {
-        if (habit) updateSessionNotification(paused, habit);
+        if (habit) updateSessionNotification(paused, habit).catch(e=>console.warn(e));
       });
     }
   },

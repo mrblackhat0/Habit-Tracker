@@ -80,7 +80,9 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
     } else if (actionId === 'reschedule') {
       const habitId = detail.notification?.data?.habitId;
       if (habitId) {
-        await handleRescheduleAction(parseInt(habitId, 10), detail.notification?.id);
+        const fallbackTitle = (detail.notification?.title ?? '').replace(/^Reminder:\s*/, '') || undefined;
+        console.log('[notifee bg] reschedule', habitId, fallbackTitle);
+        await handleRescheduleAction(parseInt(habitId, 10), detail.notification?.id, 15, fallbackTitle);
       }
     } else if (actionId === 'start_timer') {
       const habitId = detail.notification?.data?.habitId;

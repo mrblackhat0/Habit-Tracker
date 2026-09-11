@@ -23,7 +23,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        lazy: false,
+        lazy: true,
         freezeOnBlur: true,
         animation: 'none',
         tabBarActiveTintColor: Colors.primary,

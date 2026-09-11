@@ -1,6 +1,13 @@
-# ⚡ Habit-Tracker
+<p align="center">
+  <img src="assets/icon.png" width="120" height="120" alt="Habit Tracker Icon" />
+</p>
 
-A sleek, offline-first personal habit tracker and focus application built with **React Native**, **Expo**, **NativeWind (Tailwind CSS)**, **SQLite**, and **Notifee**. Crafted with an obsidian dark theme, smooth micro-interactions, rich notifications, and comprehensive progress analytics.
+<h1 align="center">⚡ Habit-Tracker</h1>
+
+<p align="center">
+  A sleek, offline-first personal habit tracker and focus application built with <strong>React Native</strong>, <strong>Expo</strong>, <strong>NativeWind (Tailwind CSS)</strong>, <strong>SQLite</strong>, and <strong>Notifee</strong>.<br/>
+  Crafted with an obsidian dark theme, smooth micro-interactions, rich notifications, and comprehensive progress analytics.
+</p>
 
 ---
 

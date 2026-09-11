@@ -16,6 +16,28 @@ export interface ActiveSession {
 
 let isFocusDbInitialized = false;
 
+// ponytail: busy_timeout alone not enough when sync + async mix; retry on locked
+function runSyncRetry(sql: string, params?: any[]) {
+  let lastErr: any;
+  for (let i = 0; i < 5; i++) {
+    try {
+      return (db as any).runSync(sql, params as any);
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message ?? e);
+      if (msg.includes('database is locked') || msg.includes('locked')) {
+        if (i < 4) {
+          const start = Date.now();
+          while (Date.now() - start < 80) {} // brief spin, allows async queue to drain
+          continue;
+        }
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 export function initFocusDb(): void {
   try {
     db.execSync(`
@@ -49,6 +71,7 @@ export function ensureFocusDb(): void {
   if (!isFocusDbInitialized) {
     initFocusDb();
   }
+  try { db.execSync('PRAGMA busy_timeout = 5000;'); } catch {}
 }
 
 export function getActiveSession(): ActiveSession | null {
@@ -80,7 +103,7 @@ export function startActiveSession(session: {
   const now = Date.now();
   const targetGoalMs = session.targetGoalMs ?? null;
 
-  db.runSync(
+  runSyncRetry(
     `INSERT INTO active_session (id, habitId, mode, status, startedAt, accumulatedMs, pausedAt, targetGoalMs)
      VALUES (1, ?, ?, 'running', ?, 0, NULL, ?)
      ON CONFLICT(id) DO UPDATE SET
@@ -106,7 +129,7 @@ export function pauseActiveSession(): ActiveSession | null {
   const additionalMs = now - current.startedAt;
   const newAccumulatedMs = current.accumulatedMs + additionalMs;
 
-  db.runSync(
+  runSyncRetry(
     `UPDATE active_session
      SET status = 'paused', accumulatedMs = ?, pausedAt = ?
      WHERE id = 1`,
@@ -122,7 +145,7 @@ export function resumeActiveSession(): ActiveSession | null {
   if (!current || current.status === 'running') return current;
 
   const now = Date.now();
-  db.runSync(
+  runSyncRetry(
     `UPDATE active_session
      SET status = 'running', startedAt = ?, pausedAt = NULL
      WHERE id = 1`,
@@ -141,7 +164,7 @@ function getLocalDateString(dateObj: Date): string {
 
 export function incrementDailyTotal(habitId: number, dateStr: string, durationMs: number): number {
   ensureFocusDb();
-  db.runSync(
+  runSyncRetry(
     `INSERT INTO daily_totals (habitId, date, totalDurationMs)
      VALUES (?, ?, ?)
      ON CONFLICT(habitId, date) DO UPDATE SET
@@ -178,7 +201,7 @@ export function getDailyTotalMs(habitId: number, dateStr: string): number {
 export function seedDailyTotal(habitId: number, dateStr: string, goalMs: number): void {
   ensureFocusDb();
   try {
-    db.runSync(
+    runSyncRetry(
       `INSERT INTO daily_totals (habitId, date, totalDurationMs)
        VALUES (?, ?, ?)
        ON CONFLICT(habitId, date) DO UPDATE SET
@@ -193,14 +216,14 @@ export function seedDailyTotal(habitId: number, dateStr: string, goalMs: number)
 export function resetTodayLoggedMinutes(habitId: number, dateStr: string): void {
   ensureFocusDb();
   try {
-    db.runSync(
+    runSyncRetry(
       `INSERT INTO daily_totals (habitId, date, totalDurationMs)
        VALUES (?, ?, 0)
        ON CONFLICT(habitId, date) DO UPDATE SET totalDurationMs = 0`,
       [habitId, dateStr]
     );
 
-    db.runSync(
+    runSyncRetry(
       `UPDATE habit_logs
        SET loggedMinutes = 0, completed = 0
        WHERE habitId = ? AND date = ?`,
@@ -224,7 +247,7 @@ export function resolveActiveSession(): { habitId: number; durationMs: number } 
 
   // Clear active session first (releases single-session lock)
   try {
-    db.runSync(`DELETE FROM active_session WHERE id = 1`);
+    runSyncRetry(`DELETE FROM active_session WHERE id = 1`);
   } catch (e) {
     console.warn('DELETE FROM active_session failed:', e);
   }
@@ -255,12 +278,13 @@ export function resolveActiveSession(): { habitId: number; durationMs: number } 
       }
     } catch {}
 
-    logCompletion({
-      habitId: session.habitId,
-      date: startDateStr,
-      loggedMinutes,
-      completed: shouldComplete,
-    });
+    // ponytail: use sync insert to avoid async lock (was logCompletion async)
+    try {
+      runSyncRetry(
+        `INSERT INTO habit_logs (habitId, date, loggedMinutes, loggedQty, completed) VALUES (?, ?, ?, NULL, ?) ON CONFLICT(habitId, date) DO UPDATE SET loggedMinutes=excluded.loggedMinutes, completed=excluded.completed`,
+        [session.habitId, startDateStr, loggedMinutes, shouldComplete ? 1 : 0]
+      );
+    } catch {}
   } else {
     // Spans midnight into multiple days
     const midnightOfNextDay = new Date(
@@ -287,12 +311,12 @@ export function resolveActiveSession(): { habitId: number; durationMs: number } 
           shouldCompleteA = loggedMinutesA >= habitRow.goalMinutes;
         }
       } catch {}
-      logCompletion({
-        habitId: session.habitId,
-        date: startDateStr,
-        loggedMinutes: loggedMinutesA,
-        completed: shouldCompleteA,
-      });
+      try {
+        runSyncRetry(
+          `INSERT INTO habit_logs (habitId, date, loggedMinutes, loggedQty, completed) VALUES (?, ?, ?, NULL, ?) ON CONFLICT(habitId, date) DO UPDATE SET loggedMinutes=excluded.loggedMinutes, completed=excluded.completed`,
+          [session.habitId, startDateStr, loggedMinutesA, shouldCompleteA ? 1 : 0]
+        );
+      } catch {}
     }
 
     if (durationDayB > 0) {
@@ -306,12 +330,12 @@ export function resolveActiveSession(): { habitId: number; durationMs: number } 
           shouldCompleteB = loggedMinutesB >= habitRow.goalMinutes;
         }
       } catch {}
-      logCompletion({
-        habitId: session.habitId,
-        date: nowDateStr,
-        loggedMinutes: loggedMinutesB,
-        completed: shouldCompleteB,
-      });
+      try {
+        runSyncRetry(
+          `INSERT INTO habit_logs (habitId, date, loggedMinutes, loggedQty, completed) VALUES (?, ?, ?, NULL, ?) ON CONFLICT(habitId, date) DO UPDATE SET loggedMinutes=excluded.loggedMinutes, completed=excluded.completed`,
+          [session.habitId, nowDateStr, loggedMinutesB, shouldCompleteB ? 1 : 0]
+        );
+      } catch {}
     }
   }
 

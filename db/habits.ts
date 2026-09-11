@@ -8,6 +8,8 @@ import {
 import { openDatabaseSync } from 'expo-sqlite';
 
 export const db = openDatabaseSync('habits.db');
+try { db.execSync('PRAGMA busy_timeout = 5000;'); } catch {}
+try { db.execSync('PRAGMA journal_mode = WAL;'); } catch {}
 
 try {
   db.execSync(`ALTER TABLE habits ADD COLUMN reminder INTEGER NOT NULL DEFAULT 0;`);

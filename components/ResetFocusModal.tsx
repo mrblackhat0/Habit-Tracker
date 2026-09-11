@@ -27,7 +27,6 @@ export default function ResetFocusModal({
   visible,
   habitName,
   todayLoggedMins,
-  selectedGoalMins,
   currentMode,
   onClose,
   onResetUi,
@@ -93,7 +92,7 @@ export default function ResetFocusModal({
               </View>
 
               {/* Options */}
-              <View className="mb-6 w-full gap-3">
+              <View className="mb-4 w-full gap-3">
                 {/* Option 1: Reset UI Only */}
                 <Pressable
                   onPress={() => {
@@ -101,16 +100,18 @@ export default function ResetFocusModal({
                     onResetUi();
                     handleClose();
                   }}
-                  className="rounded-2xl border border-border bg-background p-4 active:opacity-80">
-                  <View className="mb-1 flex-row items-center gap-3">
+                  className="flex-row items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-3 active:opacity-80">
+                  <View className="h-10 w-10 items-center justify-center rounded-xl border border-primary/30 bg-primary/10">
                     <Ionicons name="reload-outline" size={20} color={Colors.primary} />
-                    <Text className="text-base font-bold text-text">
+                  </View>
+                  <View className="">
+                    <Text className="text-base font-bold text-primary">
                       Reset {currentMode === 'timer' ? 'Timer' : 'Stopwatch'}
                     </Text>
+                    <Text className="text-xs leading-4 text-textMuted">
+                      Restarts from the beginning — your {todayLoggedMins}m history stays saved.
+                    </Text>
                   </View>
-                  <Text className="ml-8 text-xs leading-4 text-textMuted">
-                    Restarts from the beginning — your {todayLoggedMins}m history stays saved.
-                  </Text>
                 </Pressable>
 
                 {/* Option 2: Clear Logged Minutes */}
@@ -120,24 +121,24 @@ export default function ResetFocusModal({
                     onClearDb();
                     handleClose();
                   }}
-                  className="rounded-2xl border border-border bg-background p-4 active:opacity-80">
-                  <View className="mb-1 flex-row items-center gap-3">
+                  className="flex-row items-center gap-3 rounded-2xl border border-danger/30 bg-danger/5 p-3 active:opacity-80">
+                  <View className="h-10 w-10 items-center justify-center rounded-xl border border-danger/30 bg-danger/10">
                     <Ionicons name="trash-outline" size={20} color={DataColors.danger} />
-                    <Text className="text-base font-bold text-danger">
-                      Reset Logged Minutes
+                  </View>
+                  <View className="">
+                    <Text className="text-base font-bold text-danger">Reset Logged Minutes</Text>
+                    <Text className="text-xs leading-4 text-textMuted">
+                      Wipes today&apos;s {todayLoggedMins}m from your history and restarts fresh.
                     </Text>
                   </View>
-                  <Text className="ml-8 text-xs leading-4 text-textMuted">
-                    Wipes today&apos;s {todayLoggedMins}m from your history and restarts fresh.
-                  </Text>
                 </Pressable>
               </View>
 
               {/* Cancel Button */}
               <Pressable
                 onPress={handleClose}
-                className="w-full items-center rounded-2xl border border-border bg-background py-3.5 active:opacity-80">
-                <Text className="text-sm font-semibold text-text">Cancel</Text>
+                className="w-full items-center rounded-2xl border border-border bg-background/20 py-3.5 active:opacity-80">
+                <Text className="text-sm font-semibold text-secondary">Cancel</Text>
               </Pressable>
             </Animated.View>
           </TouchableWithoutFeedback>

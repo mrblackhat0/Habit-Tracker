@@ -3,10 +3,13 @@ import {
   Habit,
   TodayHabitItem,
   getAllHabits,
+  getArchivedHabits,
   getTodayHabitsWithLogs,
   createHabit,
   updateHabit as dbUpdateHabit,
   deleteHabit as dbDeleteHabit,
+  archiveHabit as dbArchiveHabit,
+  unarchiveHabit as dbUnarchiveHabit,
   logCompletion,
   getLogsForHabit,
   CreateHabitInput,
@@ -27,10 +30,14 @@ function getTodayDateStr(): string {
 export interface HabitStoreState {
   habits: Habit[];
   todayHabits: TodayHabitItem[];
+  archivedHabits: Habit[];
   loadHabits: () => Promise<void>;
+  loadArchived: () => Promise<void>;
   addHabit: (habitData: CreateHabitInput) => Promise<Habit>;
   updateHabit: (id: number, habitData: Partial<Omit<Habit, 'id' | 'createdAt'>>) => Promise<Habit>;
   deleteHabit: (id: number) => Promise<void>;
+  archiveHabit: (id: number) => Promise<void>;
+  unarchiveHabit: (id: number) => Promise<void>;
   clearAll: () => Promise<void>;
   toggleCompletion: (habitId: number, date?: string) => Promise<void>;
   resetCompletion: (habitId: number, date?: string) => Promise<void>;
@@ -39,6 +46,7 @@ export interface HabitStoreState {
 export const useHabitStore = create<HabitStoreState>((set, get) => ({
   habits: [],
   todayHabits: [],
+  archivedHabits: [],
 
   loadHabits: async () => {
     const [habits, todayHabits] = await Promise.all([
@@ -46,6 +54,11 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
       getTodayHabitsWithLogs(),
     ]);
     set({ habits, todayHabits });
+  },
+
+  loadArchived: async () => {
+    const archivedHabits = await getArchivedHabits();
+    set({ archivedHabits });
   },
 
   addHabit: async (habitData: CreateHabitInput) => {
@@ -115,7 +128,34 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
   deleteHabit: async (id: number) => {
     cancelHabitReminders(id);
     await dbDeleteHabit(id);
-    await get().loadHabits();
+    await Promise.all([get().loadHabits(), get().loadArchived()]);
+  },
+
+  archiveHabit: async (id: number) => {
+    // optimistic hide
+    set((s) => ({
+      habits: s.habits.filter((h) => h.id !== id),
+      todayHabits: s.todayHabits.filter((h) => h.id !== id),
+    }));
+    await dbArchiveHabit(id);
+    // if archived habit had active focus session, clear it
+    try {
+      const { useFocusStore } = await import('./focusStore');
+      const s = useFocusStore.getState().activeSession;
+      if (s?.habitId === id) useFocusStore.getState().cancelSessionWithoutLogging();
+    } catch {}
+    try {
+      const notifee = (await import('@notifee/react-native')).default;
+      const { getTodayDateStr } = await import('../utils/dates');
+      notifee.cancelNotification(`focus_habit_${id}_${getTodayDateStr()}`).catch(() => {});
+      (notifee as any).stopForegroundService?.().catch(() => {});
+    } catch {}
+    await Promise.all([get().loadHabits(), get().loadArchived()]);
+  },
+
+  unarchiveHabit: async (id: number) => {
+    await dbUnarchiveHabit(id);
+    await Promise.all([get().loadHabits(), get().loadArchived()]);
   },
 
   clearAll: async () => {

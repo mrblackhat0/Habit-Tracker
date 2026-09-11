@@ -83,7 +83,14 @@ export default function RootLayout() {
               router.replace('/(tabs)');
               setTimeout(() => {
                 router.push({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
-                setTimeout(() => router.push({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } }), 150);
+                setTimeout(
+                  () =>
+                    router.push({
+                      pathname: '/habit/[id]/goal',
+                      params: { id: habitId.toString() },
+                    }),
+                  150
+                );
               }, 100);
             } else {
               router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
@@ -171,7 +178,14 @@ export default function RootLayout() {
               const habit = await getHabitById(Number(habitId));
               if (habit && habit.progressType !== 'check') {
                 router.push({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
-                setTimeout(() => router.push({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } }), 80);
+                setTimeout(
+                  () =>
+                    router.push({
+                      pathname: '/habit/[id]/goal',
+                      params: { id: habitId.toString() },
+                    }),
+                  80
+                );
               } else {
                 router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
               }
@@ -216,8 +230,15 @@ export default function RootLayout() {
             />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="addHabit" options={{ headerShown: true }} />
+            <Stack.Screen
+              name="archived"
+              options={{ headerShown: true, title: 'Archived Habits' }}
+            />
             <Stack.Screen name="habit/[id]" options={{ headerShown: true }} />
-            <Stack.Screen name="habit/[id]/goal" options={{ headerShown: true, headerBackTitle: 'Back' }} />
+            <Stack.Screen
+              name="habit/[id]/goal"
+              options={{ headerShown: true, headerBackTitle: 'Back' }}
+            />
           </Stack>
         </ThemeProvider>
       </SQLiteProvider>

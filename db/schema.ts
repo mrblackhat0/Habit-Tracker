@@ -66,4 +66,7 @@ export async function initDb(db: SQLiteDatabase) {
   try {
     await db.execAsync(`ALTER TABLE habits ADD COLUMN strictMode INTEGER NOT NULL DEFAULT 0;`);
   } catch {}
+  try {
+    await db.execAsync(`ALTER TABLE habits ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;`);
+  } catch {}
 }

@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -60,6 +60,8 @@ export default function Settings() {
     hydrate,
   } = useStore();
   const clearAll = useHabitStore((s) => s.clearAll);
+  const archivedCount = useHabitStore((s) => s.archivedHabits.length);
+  const loadArchived = useHabitStore((s) => s.loadArchived);
 
   const [editVisible, setEditVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -89,7 +91,14 @@ export default function Settings() {
 
   useEffect(() => {
     hydrate();
-  }, [hydrate]);
+    loadArchived();
+  }, [hydrate, loadArchived]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadArchived();
+    }, [loadArchived])
+  );
 
   const onToggleHaptics = useCallback(
     (v: boolean) => {
@@ -311,8 +320,8 @@ export default function Settings() {
         await db.execAsync('DELETE FROM habits');
         for (const h of habitsArr) {
           await db.runAsync(
-            `INSERT INTO habits (id, name, icon, progressType, time, reminder, strictMode, goalMinutes, goalQty, unit, occurrence, createdAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO habits (id, name, icon, progressType, time, reminder, strictMode, archived, goalMinutes, goalQty, unit, occurrence, createdAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               h.id ?? null,
               h.name,
@@ -321,6 +330,7 @@ export default function Settings() {
               h.time ?? null,
               h.reminder ? 1 : 0,
               h.strictMode ? 1 : 0,
+              h.archived ? 1 : 0,
               h.goalMinutes ?? null,
               h.goalQty ?? null,
               h.unit ?? null,
@@ -641,6 +651,20 @@ export default function Settings() {
               subtitle="Restore from exported file"
               onPress={handleImportPlaceholder}
               accessibilityLabel="Import backup"
+            />
+            <SettingDivider />
+            <SettingItem
+              icon="archive-outline"
+              iconColor={Colors.secondary}
+              title="Archived habits"
+              subtitle={archivedCount > 0 ? `${archivedCount} hidden • tap to manage` : 'No archived habits'}
+              rightKind="value"
+              rightValue={archivedCount > 0 ? String(archivedCount) : undefined}
+              onPress={() => {
+                triggerHaptic('light');
+                router.push('/archived');
+              }}
+              accessibilityLabel="Archived habits"
             />
           </View>
         </View>

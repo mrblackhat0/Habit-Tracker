@@ -113,8 +113,8 @@ export const AppAlertModal: React.FC<AppAlertModalProps> = ({
                 {secondaryText ? (
                   <Pressable
                     onPress={handleClose}
-                    className="flex-1 items-center rounded-2xl border border-border bg-background py-3.5 active:opacity-80">
-                    <Text className="text-sm font-semibold text-text">{secondaryText}</Text>
+                    className={`flex-1 items-center rounded-2xl border border-border bg-secondary/5 py-3.5 active:opacity-80`}>
+                    <Text className="text-sm font-semibold text-secondary">{secondaryText}</Text>
                   </Pressable>
                 ) : null}
                 <Pressable
@@ -122,8 +122,11 @@ export const AppAlertModal: React.FC<AppAlertModalProps> = ({
                     if (onPrimary) onPrimary();
                     handleClose();
                   }}
-                  className={`flex-1 items-center justify-center rounded-2xl py-3.5 active:opacity-90 ${destructive ? 'bg-danger' : 'bg-primary'}`}>
-                  <Text className="text-sm font-bold text-white">{primaryText}</Text>
+                  className={`flex-1 items-center justify-center rounded-2xl border py-3.5 active:opacity-90 ${destructive ? 'border-danger/30 bg-danger/5' : 'border-primary bg-primary'}`}>
+                  <Text
+                    className={`text-sm font-bold ${destructive ? 'text-danger' : 'text-text'}`}>
+                    {primaryText}
+                  </Text>
                 </Pressable>
               </View>
               {!secondaryText ? (

@@ -18,6 +18,9 @@ try {
 try {
   db.execSync(`ALTER TABLE habits ADD COLUMN strictMode INTEGER NOT NULL DEFAULT 0;`);
 } catch {}
+try {
+  db.execSync(`ALTER TABLE habits ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;`);
+} catch {}
 
 export type ProgressType = 'duration' | 'quantity' | 'check';
 
@@ -29,6 +32,7 @@ export interface Habit {
   time: string | null; // 'HH:MM' 24h, null = no fixed time
   reminder: boolean;
   strictMode: boolean;
+  archived: boolean;
   goalMinutes: number | null;
   goalQty: number | null;
   unit: string | null;
@@ -79,8 +83,8 @@ export async function createHabit(input: CreateHabitInput): Promise<Habit> {
   const strictModeInt = strictMode ? 1 : 0;
 
   const result = await db.runAsync(
-    `INSERT INTO habits (name, icon, progressType, time, reminder, strictMode, goalMinutes, goalQty, unit, occurrence, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO habits (name, icon, progressType, time, reminder, strictMode, archived, goalMinutes, goalQty, unit, occurrence, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
     [
       input.name,
       input.icon,
@@ -106,6 +110,7 @@ export async function createHabit(input: CreateHabitInput): Promise<Habit> {
     time,
     reminder,
     strictMode,
+    archived: false,
     unit,
     occurrence: input.occurrence,
     createdAt,
@@ -177,11 +182,12 @@ export function getStreaksFromSet(occurrence: string, completedDates: Set<string
 }
 
 export async function getTodayHabitsWithLogs(todayStr: string = getTodayDateStr()): Promise<TodayHabitItem[]> {
-  // 1. Single JOIN query for habits and today's log status (Async)
+  // 1. Single JOIN query for habits and today's log status (Async) — exclude archived
   const rows = await db.getAllAsync<any>(
     `SELECT h.*, l.loggedMinutes, l.loggedQty, l.completed
      FROM habits h
-     LEFT JOIN habit_logs l ON h.id = l.habitId AND l.date = ?`,
+     LEFT JOIN habit_logs l ON h.id = l.habitId AND l.date = ?
+     WHERE COALESCE(h.archived, 0) = 0`,
     [todayStr]
   );
 
@@ -219,6 +225,7 @@ export async function getTodayHabitsWithLogs(todayStr: string = getTodayDateStr(
       time: row.time,
       reminder: row.reminder === 1 || Boolean(row.reminder),
       strictMode: row.strictMode === 1 || Boolean(row.strictMode),
+      archived: row.archived === 1 || Boolean(row.archived),
       goalMinutes: row.goalMinutes,
       goalQty: row.goalQty,
       unit: row.unit,
@@ -233,7 +240,7 @@ export async function getTodayHabitsWithLogs(todayStr: string = getTodayDateStr(
 }
 
 export async function getAllHabits(): Promise<Habit[]> {
-  const rows = await db.getAllAsync<any>(`SELECT * FROM habits`);
+  const rows = await db.getAllAsync<any>(`SELECT * FROM habits WHERE COALESCE(archived, 0) = 0`);
   const sortedRows = rows.sort((a, b) => {
     const rem = (b.reminder ? 1 : 0) - (a.reminder ? 1 : 0);
     if (rem !== 0) return rem;
@@ -243,7 +250,32 @@ export async function getAllHabits(): Promise<Habit[]> {
     ...row,
     reminder: row.reminder === 1 || Boolean(row.reminder),
     strictMode: row.strictMode === 1 || Boolean(row.strictMode),
+    archived: row.archived === 1 || Boolean(row.archived),
   }));
+}
+
+export async function getArchivedHabits(): Promise<Habit[]> {
+  const rows = await db.getAllAsync<any>(`SELECT * FROM habits WHERE archived = 1 ORDER BY createdAt DESC`);
+  return rows.map((row) => ({
+    ...row,
+    reminder: row.reminder === 1 || Boolean(row.reminder),
+    strictMode: row.strictMode === 1 || Boolean(row.strictMode),
+    archived: true,
+  }));
+}
+
+export async function archiveHabit(id: number): Promise<void> {
+  await db.runAsync(`UPDATE habits SET archived = 1 WHERE id = ?`, [id]);
+  try { const { cancelHabitReminders } = await import('../services/notificationService'); await cancelHabitReminders(id); } catch {}
+  // cancel active focus session if it belongs to this habit
+  try {
+    const sess: any = (db as any).getFirstSync?.(`SELECT * FROM active_session WHERE id = 1 AND habitId = ?`, [id]);
+    if (sess) await db.runAsync(`DELETE FROM active_session WHERE id = 1`);
+  } catch {}
+}
+
+export async function unarchiveHabit(id: number): Promise<void> {
+  await db.runAsync(`UPDATE habits SET archived = 0 WHERE id = ?`, [id]);
 }
 
 export async function logCompletion(input: LogCompletionInput): Promise<HabitLog> {
@@ -391,6 +423,7 @@ export async function updateHabit(id: number, input: Partial<Omit<Habit, 'id' | 
     ...existingRow,
     reminder: existingRow.reminder === 1 || Boolean(existingRow.reminder),
     strictMode: existingRow.strictMode === 1 || Boolean(existingRow.strictMode),
+    archived: existingRow.archived === 1 || Boolean(existingRow.archived),
   };
 
   const name = input.name ?? existing.name;
@@ -423,6 +456,7 @@ export async function updateHabit(id: number, input: Partial<Omit<Habit, 'id' | 
     time,
     reminder,
     strictMode,
+    archived: existing.archived,
   };
 }
 
@@ -433,6 +467,7 @@ export async function getHabitById(id: number): Promise<Habit | null> {
     ...row,
     reminder: row.reminder === 1 || Boolean(row.reminder),
     strictMode: row.strictMode === 1 || Boolean(row.strictMode),
+    archived: row.archived === 1 || Boolean(row.archived),
   };
 }
 
@@ -504,7 +539,8 @@ export async function getHabitsForDate(dateStr: string): Promise<DateHabitItem[]
   const rows = await db.getAllAsync<any>(
     `SELECT h.*, l.loggedMinutes, l.loggedQty, l.completed
      FROM habits h
-     LEFT JOIN habit_logs l ON h.id = l.habitId AND l.date = ?`,
+     LEFT JOIN habit_logs l ON h.id = l.habitId AND l.date = ?
+     WHERE COALESCE(h.archived, 0) = 0`,
     [dateStr]
   );
 
@@ -522,6 +558,7 @@ export async function getHabitsForDate(dateStr: string): Promise<DateHabitItem[]
     time: row.time,
     reminder: row.reminder === 1 || Boolean(row.reminder),
     strictMode: row.strictMode === 1 || Boolean(row.strictMode),
+    archived: row.archived === 1 || Boolean(row.archived),
     goalMinutes: row.goalMinutes,
     goalQty: row.goalQty,
     unit: row.unit,

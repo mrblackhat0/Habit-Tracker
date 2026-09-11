@@ -19,6 +19,7 @@ interface HabitActionSheetProps {
   onClose: () => void;
   onEdit: (habit: HabitCardItem) => void;
   onDelete: (habit: HabitCardItem) => void;
+  onArchive?: (habit: HabitCardItem) => void;
 }
 
 export const HabitActionSheet: React.FC<HabitActionSheetProps> = ({
@@ -27,6 +28,7 @@ export const HabitActionSheet: React.FC<HabitActionSheetProps> = ({
   onClose,
   onEdit,
   onDelete,
+  onArchive,
 }) => {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isMounted, setIsMounted] = useState(visible);
@@ -116,6 +118,20 @@ export const HabitActionSheet: React.FC<HabitActionSheetProps> = ({
                     <Text className="text-text text-base font-semibold ml-3">Edit Habit</Text>
                   </Pressable>
 
+                  {/* Archive */}
+                  <Pressable
+                    onPress={() => {
+                      if (onArchive) onArchive(habit);
+                      handleClose();
+                    }}
+                    className="flex-row items-center bg-background border border-border rounded-2xl p-4 active:opacity-80"
+                  >
+                    <Ionicons name="archive-outline" size={20} color={Colors.secondary} className="mr-3" />
+                    <Text className="text-text text-base font-semibold ml-3">
+                      {habit.archived ? 'Unarchive Habit' : 'Archive Habit'}
+                    </Text>
+                  </Pressable>
+
                   {/* Delete */}
                   <Pressable
                     onPress={() => setConfirmingDelete(true)}
@@ -125,18 +141,6 @@ export const HabitActionSheet: React.FC<HabitActionSheetProps> = ({
                     <Text className="text-danger text-base font-semibold ml-3">Delete Habit</Text>
                   </Pressable>
 
-                  {/* Archive (Disabled / Coming Soon) */}
-                  <View className="flex-row items-center justify-between bg-background/50 border border-border/40 rounded-2xl p-4 opacity-50">
-                    <View className="flex-row items-center">
-                      <Ionicons name="archive-outline" size={20} color={Colors.secondary} />
-                      <Text className="text-textMuted text-base font-semibold ml-3">
-                        Archive Habit
-                      </Text>
-                    </View>
-                    <View className="bg-surface px-2 py-0.5 rounded-md border border-border">
-                      <Text className="text-[10px] text-textMuted font-bold">SOON</Text>
-                    </View>
-                  </View>
                 </View>
               ) : (
                 /* Inline Delete Confirmation */

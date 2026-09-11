@@ -115,6 +115,8 @@ export default function Home() {
   const toggleCompletion = useHabitStore((state) => state.toggleCompletion);
   const resetCompletion = useHabitStore((state) => state.resetCompletion);
   const deleteHabit = useHabitStore((state) => state.deleteHabit);
+  const archiveHabit = useHabitStore((state) => state.archiveHabit);
+  const unarchiveHabit = useHabitStore((state) => state.unarchiveHabit);
   const userName = useStore((state) => state.userName.split(' ')[0] || 'Rebel');
   const hydrated = useStore((state) => state._hydrated);
   const hasCompletedOnboarding = useStore((state) => state.hasCompletedOnboarding);
@@ -331,6 +333,14 @@ export default function Home() {
     [deleteHabit]
   );
 
+  const handleArchiveHabit = useCallback(
+    (habit: HabitCardItem) => {
+      if (habit.archived) unarchiveHabit(habit.id);
+      else archiveHabit(habit.id);
+    },
+    [archiveHabit, unarchiveHabit]
+  );
+
   const handleAddhabit = useCallback(() => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
@@ -514,6 +524,7 @@ export default function Home() {
         onClose={() => setActionSheetVisible(false)}
         onEdit={handleEditHabit}
         onDelete={handleDeleteHabit}
+        onArchive={handleArchiveHabit}
       />
 
       {/* Completion Confirmation Modal for Incomplete Goals */}

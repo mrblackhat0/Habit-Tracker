@@ -67,7 +67,7 @@ export const CompletionConfirmModal: React.FC<CompletionConfirmModalProps> = ({
 
   let progressText = '';
   if (habit.progressType === 'duration' && habit.goalMinutes) {
-    progressText = `${habit.loggedMinutes ?? 0} / ${habit.goalMinutes} mins`;
+    progressText = `${Math.floor(habit.loggedMinutes ?? 0)} / ${habit.goalMinutes} mins`;
   } else if (habit.progressType === 'quantity' && habit.goalQty) {
     progressText = `${habit.loggedQty ?? 0} / ${habit.goalQty} ${habit.unit || ''}`;
   }

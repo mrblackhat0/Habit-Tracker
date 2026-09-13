@@ -212,12 +212,6 @@ export default function Settings() {
           } as any);
         else await Share.share({ message: json, title: 'Habit Backup' });
       }
-      showAlert({
-        title: 'Backup exported',
-        message: `Saved as ${fileName} — share or save to Files/Downloads.`,
-        type: 'success',
-        primaryText: 'Done',
-      });
     } catch (e: any) {
       showAlert({
         title: 'Export failed',
@@ -462,11 +456,41 @@ export default function Settings() {
       role: 'Lead Developer',
       initials: 'RP',
       links: [
-        { icon: 'logo-github' as const, title: 'GitHub', subtitle: 'github.com/mrblackhat0', url: 'https://github.com/mrblackhat0', color: Colors.text },
-        { icon: 'logo-instagram' as const, title: 'Instagram', subtitle: 'instagram.com/rrr143_46', url: 'https://www.instagram.com/rrr143_46', color: '#E4405F' },
-        { icon: 'logo-facebook' as const, title: 'Facebook', subtitle: 'facebook.com/rohit.patel.582553', url: 'https://www.facebook.com/rohit.patel.582553', color: '#1877F2' },
-        { icon: 'mail-outline' as const, title: 'Email', subtitle: 'rohitpatel143246@gmail.com', url: 'mailto:rohitpatel143246@gmail.com', color: DataColors.danger },
-        { icon: 'globe-outline' as const, title: 'Portfolio', subtitle: 'github.com/mrblackhat0/mrblackhat0', url: 'https://github.com/mrblackhat0/mrblackhat0', color: DataColors.positive },
+        {
+          icon: 'logo-github' as const,
+          title: 'GitHub',
+          subtitle: 'github.com/mrblackhat0',
+          url: 'https://github.com/mrblackhat0',
+          color: Colors.text,
+        },
+        {
+          icon: 'logo-instagram' as const,
+          title: 'Instagram',
+          subtitle: 'instagram.com/rrr143_46',
+          url: 'https://www.instagram.com/rrr143_46',
+          color: '#E4405F',
+        },
+        {
+          icon: 'logo-facebook' as const,
+          title: 'Facebook',
+          subtitle: 'facebook.com/rohit.patel.582553',
+          url: 'https://www.facebook.com/rohit.patel.582553',
+          color: '#1877F2',
+        },
+        {
+          icon: 'mail-outline' as const,
+          title: 'Email',
+          subtitle: 'rohitpatel143246@gmail.com',
+          url: 'mailto:rohitpatel143246@gmail.com',
+          color: DataColors.danger,
+        },
+        {
+          icon: 'globe-outline' as const,
+          title: 'Portfolio',
+          subtitle: 'github.com/mrblackhat0/mrblackhat0',
+          url: 'https://github.com/mrblackhat0/mrblackhat0',
+          color: DataColors.positive,
+        },
       ],
     },
   ];
@@ -516,8 +540,7 @@ export default function Settings() {
                   <Text className="text-[10px] font-bold text-white">…</Text>
                 </View>
               ) : null}
-              <View
-                className="absolute -bottom-1 -right-1 h-6 w-6 items-center justify-center rounded-full border border-border bg-primary">
+              <View className="absolute -bottom-1 -right-1 h-6 w-6 items-center justify-center rounded-full border border-border bg-primary">
                 <Ionicons name="camera" size={12} color="white" />
               </View>
             </Pressable>
@@ -657,7 +680,9 @@ export default function Settings() {
               icon="archive-outline"
               iconColor={Colors.secondary}
               title="Archived habits"
-              subtitle={archivedCount > 0 ? `${archivedCount} hidden • tap to manage` : 'No archived habits'}
+              subtitle={
+                archivedCount > 0 ? `${archivedCount} hidden • tap to manage` : 'No archived habits'
+              }
               rightKind="value"
               rightValue={archivedCount > 0 ? String(archivedCount) : undefined}
               onPress={() => {
@@ -844,8 +869,8 @@ export default function Settings() {
                 <View className="mt-4 flex-row gap-3">
                   <Pressable
                     onPress={() => setImportVisible(false)}
-                    className="flex-1 items-center justify-center rounded-2xl border border-border bg-background py-3.5 active:opacity-70">
-                    <Text className="text-sm font-semibold text-text">Cancel</Text>
+                    className="flex-1 items-center justify-center rounded-2xl border border-secondary/10 bg-secondary/5 py-3.5 active:opacity-70">
+                    <Text className="text-sm font-semibold text-secondary">Cancel</Text>
                   </Pressable>
                   <Pressable
                     onPress={handleImportConfirm}

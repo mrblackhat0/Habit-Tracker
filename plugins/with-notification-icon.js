@@ -26,7 +26,6 @@ function withNotificationIcon(config) {
           const drawableDir = path.join(destBase, `drawable-${d}`);
           await fs.promises.mkdir(drawableDir, { recursive: true });
           await fs.promises.copyFile(src, path.join(drawableDir, 'ic_notification.png'));
-          console.log(`[with-notification-icon] copied ${d} ic_notification.png`);
         }
       }
       return cfg;

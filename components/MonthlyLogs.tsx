@@ -92,7 +92,7 @@ export default function MonthlyLogs({ habit }: { habit: Habit }) {
               </View>
               <Text className="text-xs text-textMuted">
                 {!habit.goalMinutes && !habit.goalQty && (log.completed ? 'Completed' : 'Skipped')}
-                {habit.goalMinutes ? ` ${log.loggedMinutes} / ${habit.goalMinutes} m` : null}
+                {habit.goalMinutes ? ` ${Math.floor(log.loggedMinutes ?? 0)} / ${habit.goalMinutes} m` : null}
                 {habit.goalQty ? ` ${log.loggedQty} / ${habit.goalQty} ${habit.unit}` : null}
               </Text>
             </View>

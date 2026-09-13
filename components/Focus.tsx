@@ -10,6 +10,7 @@ import { useFocusStore } from '../store/focusStore';
 import { useHabitStore } from '../store/habitStore';
 import { FocusMode, getDailyTotalMs, resetTodayLoggedMinutes } from '../db/focus';
 import { getTodayDateStr } from '../utils/dates';
+import { requestNotificationPermission } from '@/services/notificationService';
 import SegmentedToggle from './SegmentedToggle';
 import AnimatedSwitch from './AnimatedSwitch';
 import ResetFocusModal from './ResetFocusModal';
@@ -56,9 +57,15 @@ export default function Focus({ habit }: FocusProps) {
   const habitIdRef = useRef(habit.id);
   const habitStrictRef = useRef(habit.strictMode);
   const pauseSessionRef = useRef(pauseSession);
-  useEffect(() => { habitIdRef.current = habit.id; }, [habit.id]);
-  useEffect(() => { habitStrictRef.current = habit.strictMode; }, [habit.strictMode]);
-  useEffect(() => { pauseSessionRef.current = pauseSession; }, [pauseSession]);
+  useEffect(() => {
+    habitIdRef.current = habit.id;
+  }, [habit.id]);
+  useEffect(() => {
+    habitStrictRef.current = habit.strictMode;
+  }, [habit.strictMode]);
+  useEffect(() => {
+    pauseSessionRef.current = pauseSession;
+  }, [pauseSession]);
 
   useEffect(() => {
     setStrictMode(habit.strictMode);
@@ -89,48 +96,36 @@ export default function Focus({ habit }: FocusProps) {
     setPendingNavigationAction(null);
   }, []);
 
-  const handleStopAndExit = useCallback(() => {
-    stopSession();
-    setExitModalVisible(false);
-    if (pendingNavigationAction) {
-      navigation.dispatch(pendingNavigationAction);
-    } else {
-      router.back();
-    }
-  }, [stopSession, pendingNavigationAction, navigation]);
-
-
-
   // Strict Mode auto-pause when app is switched to background/inactive
+  // ponytail: ignore transient inactive from permission dialog + grace after start (1500ms)
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
-        const active = useFocusStore.getState().activeSession;
-        const hid = habitIdRef.current;
-        const currentHabit = useHabitStore.getState().habits.find((h) => h.id === hid);
-        const isStrict = currentHabit ? currentHabit.strictMode : habitStrictRef.current;
-        if (active && active.habitId === hid && active.status === 'running' && isStrict) {
-          pauseSessionRef.current();
-        }
+      if (nextAppState !== 'background') return;
+      const active = useFocusStore.getState().activeSession;
+      const hid = habitIdRef.current;
+      const currentHabit = useHabitStore.getState().habits.find((h) => h.id === hid);
+      const isStrict = currentHabit ? currentHabit.strictMode : habitStrictRef.current;
+      if (active && active.habitId === hid && active.status === 'running' && isStrict) {
+        if (Date.now() - active.startedAt < 1500) return;
+        pauseSessionRef.current();
       }
     });
     return () => subscription.remove();
   }, []);
 
   // Strict Mode auto-pause when screen is switched / loses focus
-  // ponytail: guard with navigation.isFocused() to skip StrictMode double-mount + dep-change synthetic cleanups
   useFocusEffect(
     useCallback(() => {
       return () => {
-        // Cleanup can fire from React StrictMode double-mount or dep-change re-run while still focused — skip those
         if ((navigation as any).isFocused?.() === true) return;
         const active = useFocusStore.getState().activeSession;
+        if (!active || active.status !== 'running') return;
         const hid = habitIdRef.current;
+        if (active.habitId !== hid) return;
+        if (Date.now() - active.startedAt < 1500) return;
         const currentHabit = useHabitStore.getState().habits.find((h) => h.id === hid);
         const isStrict = currentHabit ? currentHabit.strictMode : habitStrictRef.current;
-        if (active && active.habitId === hid && active.status === 'running' && isStrict) {
-          pauseSessionRef.current();
-        }
+        if (isStrict) pauseSessionRef.current();
       };
     }, [navigation])
   );
@@ -156,12 +151,12 @@ export default function Focus({ habit }: FocusProps) {
     getLogsForHabit(habit.id).then((logs) => {
       const dbTotal = getDailyTotalMs(habit.id, todayStr);
       const todayLog = logs.find((l) => l.date === todayStr);
-      const logMinsMs = (todayLog?.loggedMinutes ?? 0) * 60000;
+      const logMinsMs = Math.round((todayLog?.loggedMinutes ?? 0) * 60) * 1000;
       setTodayLoggedMs(Math.max(dbTotal, logMinsMs));
     });
   }, [habit.id, todayStr, activeSession, habitsVersion]);
 
-  const todayLoggedMins = Math.round(todayLoggedMs / 60000);
+  const todayLoggedMins = Math.floor(todayLoggedMs / 60000);
 
   const isCurrentHabitActive = activeSession?.habitId === habit.id;
   const isOtherHabitActive = Boolean(activeSession && activeSession.habitId !== habit.id);
@@ -173,7 +168,7 @@ export default function Focus({ habit }: FocusProps) {
     if (!isRunning) return;
     const interval = setInterval(() => {
       setTick((t) => t + 1);
-    }, 500);
+    }, 250);
     return () => clearInterval(interval);
   }, [isRunning]);
 
@@ -228,6 +223,24 @@ export default function Focus({ habit }: FocusProps) {
     return isUiReset ? 0 : todayLoggedMs;
   }, [isCurrentHabitActive, elapsedMs, isUiReset, todayLoggedMs]);
 
+  const handleStopAndLog = useCallback(() => {
+    stopSession();
+    // DB already updated synchronously — refresh optimistically so display
+    // never flashes the pre-session value before async reload completes
+    const fresh = getDailyTotalMs(habit.id, todayStr);
+    setTodayLoggedMs((prev) => Math.max(fresh, prev));
+  }, [stopSession, habit.id, todayStr]);
+
+  const handleStopAndExit = useCallback(() => {
+    handleStopAndLog();
+    setExitModalVisible(false);
+    if (pendingNavigationAction) {
+      navigation.dispatch(pendingNavigationAction);
+    } else {
+      router.back();
+    }
+  }, [handleStopAndLog, pendingNavigationAction, navigation]);
+
   // Auto-stop and log session when timer hits 00:00
   useEffect(() => {
     const currentTimerMode = isCurrentHabitActive ? activeSession!.mode : mode;
@@ -235,9 +248,9 @@ export default function Focus({ habit }: FocusProps) {
 
     if (elapsedMs >= targetGoalMs) {
       hapticNotification();
-      stopSession();
+      handleStopAndLog();
     }
-  }, [isRunning, isCurrentHabitActive, activeSession, mode, targetGoalMs, elapsedMs, stopSession]);
+  }, [isRunning, isCurrentHabitActive, activeSession, mode, targetGoalMs, elapsedMs, handleStopAndLog]);
 
   const fullGoalMs = selectedGoalMins * 60 * 1000;
   const progressPercent = useMemo(() => {
@@ -251,10 +264,7 @@ export default function Focus({ habit }: FocusProps) {
 
   const handleStart = () => {
     setLockErrorMessage(null);
-    // Don't block first start on permission/channel creation (slow on 1st call) — fire in background
-    import('@/services/notificationService')
-      .then((m) => m.requestNotificationPermission().catch(() => {}))
-      .catch(() => {});
+    requestNotificationPermission().catch(() => {});
     let targetMs: number | null = null;
     if (mode === 'timer') {
       const fullGoal = selectedGoalMins * 60 * 1000;
@@ -262,7 +272,7 @@ export default function Focus({ habit }: FocusProps) {
       targetMs = remaining > 0 ? remaining : fullGoal;
     }
 
-    const success = startSession(habit.id, mode, targetMs);
+    const success = startSession(habit.id, mode, targetMs, isUiReset);
     if (!success) {
       const otherName = activeOtherHabit?.name ?? 'another habit';
       setLockErrorMessage(`"${otherName}" session is currently active. Resolve it first.`);
@@ -308,8 +318,8 @@ export default function Focus({ habit }: FocusProps) {
           <View className="flex-1">
             <Text className="text-sm font-bold text-text">Session Locked</Text>
             <Text className="mt-0.5 text-xs text-textMuted">
-              &quot;{activeOtherHabit?.name ?? 'Another habit'}&quot; is currently {activeSession?.status}.
-              Resolve it first.
+              &quot;{activeOtherHabit?.name ?? 'Another habit'}&quot; is currently{' '}
+              {activeSession?.status}. Resolve it first.
             </Text>
           </View>
         </View>
@@ -340,18 +350,31 @@ export default function Focus({ habit }: FocusProps) {
           </Text>
           <Pressable
             onPress={() => {
-              setResetModalVisible(true);
+              if (isUiReset) {
+                hapticImpact();
+                setIsUiReset(false);
+              } else {
+                setResetModalVisible(true);
+              }
             }}
+            disabled={isRunning}
             className="flex-row items-center gap-1 rounded-xl border border-border bg-background px-2.5 py-1 active:opacity-80">
-            <Ionicons name="reload-outline" size={13} color={Colors.secondary} />
-            <Text className="text-[11px] font-semibold text-textMuted">Reset</Text>
+            <Ionicons
+              name={isUiReset ? 'arrow-undo-outline' : 'reload-outline'}
+              size={13}
+              color={Colors.secondary}
+            />
+            <Text className="text-[11px] font-semibold text-textMuted">
+              {isUiReset ? 'Restore' : 'Reset'}
+            </Text>
           </Pressable>
         </View>
 
         {currentMode === 'timer' ? (
           <>
             <Text className="my-2 text-5xl font-black tracking-tight text-text">
-              {formatTimeMs(remainingMs)}
+              {/* ceil: countdown shows the second still in hand (8m44.7s -> 8m45s) */}
+              {formatTimeMs(Math.ceil(remainingMs / 1000) * 1000)}
             </Text>
             <Text className="mb-4 text-xs font-medium text-textMuted">
               {progressPercent}% of {selectedGoalMins}m goal completed
@@ -374,7 +397,6 @@ export default function Focus({ habit }: FocusProps) {
                     key={mins}
                     onPress={() => {
                       setSelectedGoalMins(mins);
-                      setIsUiReset(false);
                     }}
                     className={`rounded-xl border px-3 py-1.5 ${
                       selectedGoalMins === mins
@@ -385,7 +407,7 @@ export default function Focus({ habit }: FocusProps) {
                       className={`text-xs font-bold ${
                         selectedGoalMins === mins ? 'text-white' : 'text-textMuted'
                       }`}>
-                      {mins}m {mins===goalMinutes&&'(target)'}
+                      {mins}m {mins === goalMinutes && '(target)'}
                     </Text>
                   </Pressable>
                 ))}
@@ -437,7 +459,7 @@ export default function Focus({ habit }: FocusProps) {
             )}
 
             <Pressable
-              onPress={stopSession}
+              onPress={handleStopAndLog}
               className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-danger py-4 active:opacity-90">
               <Ionicons name="square" size={18} color="#FFFFFF" />
               <Text className="text-base font-bold text-white">Stop & Log</Text>
@@ -484,8 +506,6 @@ export default function Focus({ habit }: FocusProps) {
         onStopAndExit={handleStopAndExit}
       />
 
-
-
       {/* Reset Focus Modal Prompt */}
       <ResetFocusModal
         visible={resetModalVisible}
@@ -506,13 +526,13 @@ export default function Focus({ habit }: FocusProps) {
               <Ionicons name="time-outline" size={40} color={DataColors.warning} />
               <Text className="mt-3 text-center text-xl font-bold text-text">Session Paused</Text>
               <Text className="mt-2 px-2 text-center text-xs leading-5 text-textMuted">
-                &quot;{stalePrompt.habitName}&quot; was paused {stalePrompt.pausedMinsAgo} minutes ago. Would
-                you like to resume or log and stop?
+                &quot;{stalePrompt.habitName}&quot; was paused {stalePrompt.pausedMinsAgo} minutes
+                ago. Would you like to resume or log and stop?
               </Text>
 
               <View className="mt-6 w-full flex-row gap-3">
                 <Pressable
-                  onPress={stopSession}
+                  onPress={handleStopAndLog}
                   className="flex-1 items-center rounded-2xl bg-danger py-3.5">
                   <Text className="text-sm font-bold text-white">Log & Stop</Text>
                 </Pressable>
@@ -529,5 +549,3 @@ export default function Focus({ habit }: FocusProps) {
     </View>
   );
 }
-
-

@@ -71,6 +71,21 @@ export type LogCompletionInput = {
   completed: boolean;
 };
 
+const toHabit = (row: any): Habit => ({
+  ...row,
+  reminder: row.reminder === 1 || Boolean(row.reminder),
+  strictMode: row.strictMode === 1 || Boolean(row.strictMode),
+  archived: row.archived === 1 || Boolean(row.archived),
+});
+
+const setArchived = async (id: number, archived: boolean) => {
+  await db.runAsync(`UPDATE habits SET archived = ? WHERE id = ?`, [archived ? 1 : 0, id]);
+  if (archived) {
+    try { const { cancelHabitReminders } = await import('../services/notificationService'); await cancelHabitReminders(id); } catch {}
+    try { const sess: any = (db as any).getFirstSync?.(`SELECT * FROM active_session WHERE id = 1 AND habitId = ?`, [id]); if (sess) await db.runAsync(`DELETE FROM active_session WHERE id = 1`); } catch {}
+  }
+};
+
 export async function createHabit(input: CreateHabitInput): Promise<Habit> {
   const createdAt = input.createdAt ?? new Date().toISOString();
   const goalMinutes = input.goalMinutes ?? null;
@@ -241,42 +256,17 @@ export async function getTodayHabitsWithLogs(todayStr: string = getTodayDateStr(
 
 export async function getAllHabits(): Promise<Habit[]> {
   const rows = await db.getAllAsync<any>(`SELECT * FROM habits WHERE COALESCE(archived, 0) = 0`);
-  const sortedRows = rows.sort((a, b) => {
-    const rem = (b.reminder ? 1 : 0) - (a.reminder ? 1 : 0);
-    if (rem !== 0) return rem;
-    return hours24(a.time) - hours24(b.time);
-  });
-  return sortedRows.map((row) => ({
-    ...row,
-    reminder: row.reminder === 1 || Boolean(row.reminder),
-    strictMode: row.strictMode === 1 || Boolean(row.strictMode),
-    archived: row.archived === 1 || Boolean(row.archived),
-  }));
+  const sortedRows = rows.sort((a, b) => (b.reminder ? 1 : 0) - (a.reminder ? 1 : 0) || hours24(a.time) - hours24(b.time));
+  return sortedRows.map(toHabit);
 }
 
 export async function getArchivedHabits(): Promise<Habit[]> {
   const rows = await db.getAllAsync<any>(`SELECT * FROM habits WHERE archived = 1 ORDER BY createdAt DESC`);
-  return rows.map((row) => ({
-    ...row,
-    reminder: row.reminder === 1 || Boolean(row.reminder),
-    strictMode: row.strictMode === 1 || Boolean(row.strictMode),
-    archived: true,
-  }));
+  return rows.map(toHabit);
 }
 
-export async function archiveHabit(id: number): Promise<void> {
-  await db.runAsync(`UPDATE habits SET archived = 1 WHERE id = ?`, [id]);
-  try { const { cancelHabitReminders } = await import('../services/notificationService'); await cancelHabitReminders(id); } catch {}
-  // cancel active focus session if it belongs to this habit
-  try {
-    const sess: any = (db as any).getFirstSync?.(`SELECT * FROM active_session WHERE id = 1 AND habitId = ?`, [id]);
-    if (sess) await db.runAsync(`DELETE FROM active_session WHERE id = 1`);
-  } catch {}
-}
-
-export async function unarchiveHabit(id: number): Promise<void> {
-  await db.runAsync(`UPDATE habits SET archived = 0 WHERE id = ?`, [id]);
-}
+export const archiveHabit = (id: number) => setArchived(id, true);
+export const unarchiveHabit = (id: number) => setArchived(id, false);
 
 export async function logCompletion(input: LogCompletionInput): Promise<HabitLog> {
   const loggedMinutes = input.loggedMinutes ?? null;
@@ -419,12 +409,7 @@ export async function updateHabit(id: number, input: Partial<Omit<Habit, 'id' | 
     throw new Error(`Habit with id ${id} not found`);
   }
 
-  const existing: Habit = {
-    ...existingRow,
-    reminder: existingRow.reminder === 1 || Boolean(existingRow.reminder),
-    strictMode: existingRow.strictMode === 1 || Boolean(existingRow.strictMode),
-    archived: existingRow.archived === 1 || Boolean(existingRow.archived),
-  };
+  const existing: Habit = toHabit(existingRow);
 
   const name = input.name ?? existing.name;
   const icon = input.icon ?? existing.icon;
@@ -462,13 +447,7 @@ export async function updateHabit(id: number, input: Partial<Omit<Habit, 'id' | 
 
 export async function getHabitById(id: number): Promise<Habit | null> {
   const row = await db.getFirstAsync<any>(`SELECT * FROM habits WHERE id = ?`, [id]);
-  if (!row) return null;
-  return {
-    ...row,
-    reminder: row.reminder === 1 || Boolean(row.reminder),
-    strictMode: row.strictMode === 1 || Boolean(row.strictMode),
-    archived: row.archived === 1 || Boolean(row.archived),
-  };
+  return row ? toHabit(row) : null;
 }
 
 export async function getLogsByHabitIdAndMonth(

@@ -230,10 +230,6 @@ export default function RootLayout() {
             />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="addHabit" options={{ headerShown: true }} />
-            <Stack.Screen
-              name="archived"
-              options={{ headerShown: true, title: 'Archived Habits' }}
-            />
             <Stack.Screen name="habit/[id]" options={{ headerShown: true }} />
             <Stack.Screen
               name="habit/[id]/goal"

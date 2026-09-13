@@ -65,7 +65,8 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
           const todayStr = getTodayDateStr();
           const dailyTotalMs = getDailyTotalMs(result.habitId, todayStr);
           const totalMinsToday = Math.max(1, Math.round(dailyTotalMs / 60000));
-          await stopSessionNotification(habit.id, habit.name, totalMinsToday);
+          const sessionMins = Math.floor((result.durationMs ?? 0) / 60000);
+          await stopSessionNotification(habit.id, habit.name, sessionMins, totalMinsToday);
         } else {
           await notifee.stopForegroundService();
         }
@@ -81,7 +82,6 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
       const habitId = detail.notification?.data?.habitId;
       if (habitId) {
         const fallbackTitle = (detail.notification?.title ?? '').replace(/^Reminder:\s*/, '') || undefined;
-        console.log('[notifee bg] reschedule', habitId, fallbackTitle);
         await handleRescheduleAction(parseInt(habitId, 10), detail.notification?.id, 15, fallbackTitle);
       }
     } else if (actionId === 'start_timer') {

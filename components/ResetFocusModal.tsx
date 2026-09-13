@@ -137,7 +137,7 @@ export default function ResetFocusModal({
               {/* Cancel Button */}
               <Pressable
                 onPress={handleClose}
-                className="w-full items-center rounded-2xl border border-border bg-background/20 py-3.5 active:opacity-80">
+                className="w-full items-center rounded-2xl border border-border bg-secondary/5 py-3.5 active:opacity-80">
                 <Text className="text-sm font-semibold text-secondary">Cancel</Text>
               </Pressable>
             </Animated.View>

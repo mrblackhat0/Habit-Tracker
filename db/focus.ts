@@ -267,7 +267,7 @@ export function resolveActiveSession(): { habitId: number; durationMs: number } 
     // Single day
     incrementDailyTotal(session.habitId, startDateStr, sessionDurationMs);
     const totalMsForDay = getDailyTotalMs(session.habitId, startDateStr);
-    const loggedMinutes = Math.max(1, Math.round(totalMsForDay / 60000));
+    const loggedMinutes = Math.max(1 / 60, totalMsForDay / 60000);
 
     // Don't mark completed until goal reached — let autoCompletePending handle it
     let shouldComplete = false;
@@ -303,7 +303,7 @@ export function resolveActiveSession(): { habitId: number; durationMs: number } 
     if (durationDayA > 0) {
       incrementDailyTotal(session.habitId, startDateStr, durationDayA);
       const totalMsA = getDailyTotalMs(session.habitId, startDateStr);
-      const loggedMinutesA = Math.max(1, Math.round(totalMsA / 60000));
+      const loggedMinutesA = Math.max(1 / 60, totalMsA / 60000);
       let shouldCompleteA = false;
       try {
         const habitRow: any = db.getFirstSync(`SELECT progressType, goalMinutes FROM habits WHERE id = ?`, [session.habitId]);
@@ -322,7 +322,7 @@ export function resolveActiveSession(): { habitId: number; durationMs: number } 
     if (durationDayB > 0) {
       incrementDailyTotal(session.habitId, nowDateStr, durationDayB);
       const totalMsB = getDailyTotalMs(session.habitId, nowDateStr);
-      const loggedMinutesB = Math.max(1, Math.round(totalMsB / 60000));
+      const loggedMinutesB = Math.max(1 / 60, totalMsB / 60000);
       let shouldCompleteB = false;
       try {
         const habitRow: any = db.getFirstSync(`SELECT progressType, goalMinutes FROM habits WHERE id = ?`, [session.habitId]);

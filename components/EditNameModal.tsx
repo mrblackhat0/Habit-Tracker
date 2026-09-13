@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, TextInput, TouchableWithoutFeedback, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  Modal,
+  View,
+  Text,
+  Pressable,
+  TextInput,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 
@@ -10,7 +19,12 @@ interface EditNameModalProps {
   onSave: (name: string) => void;
 }
 
-export default function EditNameModal({ visible, initialName, onClose, onSave }: EditNameModalProps) {
+export default function EditNameModal({
+  visible,
+  initialName,
+  onClose,
+  onSave,
+}: EditNameModalProps) {
   const [value, setValue] = useState(initialName);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,27 +50,34 @@ export default function EditNameModal({ visible, initialName, onClose, onSave }:
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent>
       <TouchableWithoutFeedback onPress={onClose}>
         <View className="flex-1 justify-center bg-black/60 px-5">
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
               <View className="rounded-3xl border border-border bg-surface p-5 shadow-2xl">
                 <View className="mb-4 flex-row items-center justify-between">
-                  <Text className="text-lg font-bold text-text">Edit display name</Text>
+                  <Text className="text-lg font-bold text-text">Edit username</Text>
                   <Pressable
                     onPress={onClose}
                     hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel="Close"
-                    className="h-8 w-8 items-center justify-center rounded-full border border-border bg-background active:opacity-70"
-                  >
+                    className="h-8 w-8 items-center justify-center rounded-full border border-border bg-background active:opacity-70">
                     <Ionicons name="close" size={18} color={Colors.secondary} />
                   </Pressable>
                 </View>
 
-                <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-secondary">Display name</Text>
-                <View className={`flex-row items-center rounded-2xl border bg-background px-3 py-1 ${error ? 'border-danger' : 'border-border'}`}>
+                <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-secondary">
+                  UserName
+                </Text>
+                <View
+                  className={`flex-row items-center rounded-2xl border bg-background px-3 py-1 ${error ? 'border-danger' : 'border-border'}`}>
                   <Ionicons name="person-outline" size={18} color={Colors.secondary} />
                   <TextInput
                     value={value}
@@ -81,11 +102,15 @@ export default function EditNameModal({ visible, initialName, onClose, onSave }:
                   ) : null}
                 </View>
                 {error ? (
-                  <Text className="mt-2 text-xs font-medium text-danger" accessibilityLiveRegion="polite">
+                  <Text
+                    className="mt-2 text-xs font-medium text-danger"
+                    accessibilityLiveRegion="polite">
                     {error}
                   </Text>
                 ) : (
-                  <Text className="mt-2 text-xs text-secondary">Shown in greeting — “Good Morning, {value.trim() || '…'}”</Text>
+                  <Text className="mt-2 text-xs text-secondary">
+                    Shown in greeting — “Good Morning, {value.trim().split(' ')[0] || '…'}”
+                  </Text>
                 )}
 
                 <View className="mt-5 flex-row gap-3">
@@ -93,16 +118,14 @@ export default function EditNameModal({ visible, initialName, onClose, onSave }:
                     onPress={onClose}
                     className="flex-1 items-center justify-center rounded-2xl border border-border bg-background py-3.5 active:opacity-70"
                     accessibilityRole="button"
-                    accessibilityLabel="Cancel"
-                  >
+                    accessibilityLabel="Cancel">
                     <Text className="text-sm font-semibold text-text">Cancel</Text>
                   </Pressable>
                   <Pressable
                     onPress={handleSave}
                     className="flex-1 items-center justify-center rounded-2xl bg-primary py-3.5 active:opacity-90"
                     accessibilityRole="button"
-                    accessibilityLabel="Save name"
-                  >
+                    accessibilityLabel="Save name">
                     <Text className="text-sm font-bold text-white">Save</Text>
                   </Pressable>
                 </View>

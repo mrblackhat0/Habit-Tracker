@@ -10,7 +10,8 @@ import { getTodayDateStr } from '@/utils/dates';
 
 function formatCompactLogged(habit: Habit, raw: number): { display: string; a11y: string } {
   if (habit.progressType === 'duration') {
-    return { display: `${raw}m`, a11y: `${raw} minutes` };
+    const whole = Math.floor(raw);
+    return { display: `${whole}m`, a11y: `${whole} minutes` };
   }
   if (habit.progressType === 'quantity') {
     const u = (habit.unit ?? '').trim();

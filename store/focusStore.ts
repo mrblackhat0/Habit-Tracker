@@ -26,7 +26,7 @@ export interface FocusStoreState {
   stalePrompt: StalePromptState | null;
 
   loadActiveSession: () => void;
-  startSession: (habitId: number, mode: FocusMode, targetGoalMs?: number | null) => boolean;
+  startSession: (habitId: number, mode: FocusMode, targetGoalMs?: number | null, freshStart?: boolean) => boolean;
   pauseSession: () => void;
   resumeSession: () => void;
   stopSession: () => void;
@@ -50,32 +50,26 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
     }
   },
 
-  startSession: (habitId: number, mode: FocusMode, targetGoalMs?: number | null) => {
+  startSession: (habitId: number, mode: FocusMode, targetGoalMs?: number | null, freshStart?: boolean) => {
     const current = getActiveSession();
-    console.log('[focusStore] startSession', { habitId, mode, current });
     if (current) {
-      console.log('[focusStore] blocked');
       return false;
     }
 
     const newSession = startActiveSession({ habitId, mode, targetGoalMs });
-    console.log('[focusStore] newSession', newSession);
     set({ activeSession: newSession });
 
     getHabitById(habitId).then((habit) => {
-      console.log('[focusStore] getHabit', habit);
-      if (habit) updateSessionNotification(newSession, habit).then(()=>console.log('[focusStore] update done')).catch(e=>console.warn('[focusStore] update failed', e));
+      if (habit) updateSessionNotification(newSession, habit, freshStart).catch((e) => console.warn('[focusStore] update failed', e));
     });
     return true;
   },
 
   pauseSession: () => {
     const current = get().activeSession;
-    console.log('[focusStore] pause', current);
     if (!current || current.status === 'paused') return;
 
     const paused = pauseActiveSession();
-    console.log('[focusStore] paused', paused);
     set({ activeSession: paused });
 
     if (paused) {
@@ -113,7 +107,8 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
           const todayStr = getTodayDateStr();
           const dailyTotalMs = getDailyTotalMs(habit.id, todayStr);
           const totalMinsToday = Math.round(dailyTotalMs / 60000);
-          stopSessionNotification(habit.id, habit.name, totalMinsToday);
+          const sessionMins = Math.floor((result.durationMs ?? 0) / 60000);
+          stopSessionNotification(habit.id, habit.name, sessionMins, totalMinsToday);
         }
       });
     }

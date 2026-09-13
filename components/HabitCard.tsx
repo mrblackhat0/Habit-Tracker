@@ -63,7 +63,7 @@ export const HabitCard: React.FC<HabitCardProps> = React.memo(
       if (progressType === 'duration' && goalMinutes) {
         const gm = Number(goalMinutes) || 0;
         const lm = Number(loggedMinutes) || 0;
-        progressText = `${lm} / ${gm} mins`;
+        progressText = `${Math.floor(lm)} / ${gm} mins`;
       } else if (progressType === 'quantity' && goalQty) {
         const gq = Number(goalQty) || 0;
         const lq = Number(loggedQty) || 0;

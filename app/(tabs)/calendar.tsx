@@ -313,7 +313,7 @@ export default function CalendarScreen() {
                           )}
                           {habit.progressType === 'duration' && habit.goalMinutes ? (
                             <Text className="text-xs text-secondary">
-                              {habit.loggedMinutes}/{habit.goalMinutes} min
+                              {Math.floor(habit.loggedMinutes ?? 0)}/{habit.goalMinutes} min
                             </Text>
                           ) : null}
                           {habit.progressType === 'quantity' && habit.goalQty ? (
@@ -386,7 +386,7 @@ export default function CalendarScreen() {
                           )}
                           {habit.progressType === 'duration' && habit.goalMinutes ? (
                             <Text className="text-xs text-secondary">
-                              {habit.loggedMinutes}/{habit.goalMinutes} min
+                              {Math.floor(habit.loggedMinutes ?? 0)}/{habit.goalMinutes} min
                             </Text>
                           ) : null}
                           {habit.progressType === 'quantity' && habit.goalQty ? (

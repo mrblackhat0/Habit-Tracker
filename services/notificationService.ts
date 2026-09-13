@@ -40,14 +40,12 @@ let channelsInitialized = false;
 async function safeDisplayNotification(payload: any) {
   try {
     await notifee.displayNotification(payload);
-    console.log('[notifee] display ok', payload.id);
   } catch (e: any) {
     const msg = String(e?.message ?? e);
     console.warn('[notifee] display failed', payload.id, msg);
     if (msg.includes('small icon') || msg.includes('Invalid notification')) {
       try {
         await notifee.displayNotification({ ...payload, android: { ...payload.android, smallIcon: 'ic_launcher' } });
-        console.log('[notifee] fallback ic_launcher ok', payload.id);
         return;
       } catch (e2) { console.warn('[notifee] fallback failed', e2); }
     }
@@ -85,18 +83,15 @@ function getNotificationId(habitId: number, dateStr?: string): string {
   return `focus_habit_${habitId}_${d}`;
 }
 
-export async function updateSessionNotification(session: ActiveSession, habit: Habit) {
+export async function updateSessionNotification(session: ActiveSession, habit: Habit, freshStart?: boolean) {
   const notificationId = getNotificationId(habit.id);
   if (!isFocusNotificationsEnabled()) {
     try { await notifee.cancelNotification(notificationId); } catch {}
     try { await (notifee as any).stopForegroundService?.(); } catch {}
-    console.log('[notifee] focus notifications disabled, skipping', notificationId);
     return;
   }
   try {
-    console.log('[notifee] updateSessionNotification', session.status, session.mode, habit.name);
     await initNotificationChannels();
-    console.log('[notifee] channels ready');
 
     const channelId = session.mode === 'timer' ? TIMER_CHANNEL_ID : STOPWATCH_CHANNEL_ID;
 
@@ -111,7 +106,7 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
     const dbTotal: number = getTotal(habit.id, todayStr);
     const logsForDay = await getLogsForHabit(habit.id);
     const todayLogForMs = logsForDay.find((l) => l.date === todayStr);
-    const logMinsMs = (todayLogForMs?.loggedMinutes ?? 0) * 60000;
+    const logMinsMs = Math.round((todayLogForMs?.loggedMinutes ?? 0) * 60) * 1000;
     const previousLoggedMs: number = Math.max(dbTotal, logMinsMs);
 
     const sessionTargetMs =
@@ -125,13 +120,13 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
 
       if (session.mode === 'timer' && sessionTargetMs > 0) {
         const remainingMs = Math.max(0, sessionTargetMs - currentElapsedMs);
-        timestamp = now + remainingMs;
+        // ceil to match in-app countdown (system chronometer truncates)
+        timestamp = now + Math.ceil(remainingMs / 1000) * 1000;
       } else {
-        const totalElapsedMs = previousLoggedMs + currentElapsedMs;
+      const totalElapsedMs = (freshStart ? 0 : previousLoggedMs) + currentElapsedMs;
         timestamp = now - totalElapsedMs;
       }
 
-      try {
       await safeDisplayNotification({
         id: notificationId,
         title: habit.name,
@@ -160,15 +155,8 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
           ],
         },
       });
-        console.log('[notifee] displayNotification success', notificationId);
-        const displayed: any = await notifee.getDisplayedNotifications().catch(()=>[]);
-        console.log('[notifee] displayed', displayed.map((n:any)=>n.id));
-      } catch (e) {
-        console.warn('[notifee] display failed', e);
-        throw e;
-      }
     } else {
-      const totalElapsedMs = previousLoggedMs + currentElapsedMs;
+      const totalElapsedMs = (freshStart ? 0 : previousLoggedMs) + currentElapsedMs;
 
       let body = `Paused — ${Math.floor(totalElapsedMs / 60000)}m elapsed`;
       if (session.mode === 'timer' && sessionTargetMs > 0) {
@@ -214,6 +202,7 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
 export async function stopSessionNotification(
   habitId: number,
   habitName: string,
+  sessionMins: number,
   totalMinsToday: number
 ) {
   try {
@@ -224,14 +213,13 @@ export async function stopSessionNotification(
     await notifee.stopForegroundService();
 
     if (!isFocusNotificationsEnabled()) {
-      console.log('[notifee] focus notifications disabled, skipping completion notification', notificationId);
       return;
     }
 
     await safeDisplayNotification({
       id: notificationId,
       title: habitName,
-      body: `${totalMinsToday}m logged today ✓`,
+      body: `logged now: ${sessionMins}m ✓ • logged today: ${totalMinsToday}m ✓`,
       android: {
         channelId: TIMER_CHANNEL_ID,
         ongoing: false,
@@ -399,22 +387,11 @@ export async function syncHabitReminder(
   // ponytail: Android 12+ exact alarm - check permission and log triggers for when app closed
   try {
     const settings: any = await notifee.getNotificationSettings();
-    console.log('[notifee] trigger check settings', settings?.android?.alarm);
     if (settings?.android?.alarm === 0) {
       console.warn('[notifee] exact alarm denied - triggers will not fire when app closed');
       try { await (notifee as any).openAlarmPermissionSettings?.(); } catch {}
     }
   } catch {}
-  // battery optimization hint
-  try {
-    const { Platform } = require('react-native');
-    if (Platform.OS === 'android') {
-      const { default: notifeeLib } = await import('@notifee/react-native');
-      // notifee doesn't expose battery check, just log
-      console.log('[notifee] check battery optimization - ensure app not battery optimized');
-    }
-  } catch {}
-
   const habit = await getHabitById(habitId);
   const actions = habit
     ? getReminderActions(habit)
@@ -465,15 +442,10 @@ export async function syncHabitReminder(
         },
         trigger
       );
-      console.log('[notifee] scheduled trigger', `habit_reminder_${habitId}_day_${dayOfWeek}`, new Date(timestamp).toString());
     } catch (e) {
       console.warn(`Failed to schedule reminder trigger for day ${dayOfWeek}:`, e);
     }
   }
-  try {
-    const triggers = await (notifee as any).getTriggerNotifications?.();
-    console.log('[notifee] total triggers after schedule', triggers?.length ?? 'unknown', triggers?.map?.((t:any)=>t.notification?.id));
-  } catch {}
 }
 
 export async function scheduleWeeklyOverview(enabled: boolean) {
@@ -563,7 +535,6 @@ export async function handleRescheduleAction(
   fallbackTitle?: string
 ) {
   try {
-    console.log('[notifee] handleReschedule', { habitId, notificationId, snoozeMinutes });
     let habit: Habit | null = null;
     try {
       habit = await getHabitById(habitId);

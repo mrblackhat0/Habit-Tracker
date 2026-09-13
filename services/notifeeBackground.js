@@ -4,6 +4,7 @@ import {
   resumeActiveSession,
   resolveActiveSession,
   getDailyTotalMs,
+  getActiveSession,
 } from '@/db/focus';
 import { getHabitById } from '@/db/habits';
 import {
@@ -24,6 +25,24 @@ function getTodayDateStr() {
 notifee.registerForegroundService(() => new Promise(() => {}));
 
 notifee.onBackgroundEvent(async ({ type, detail }) => {
+  // Background timer completion — fires even if app is closed
+  // Trigger already displayed the final notification (same id as stop), just ensure DB is completed
+  if (type === EventType.TRIGGER_NOTIFICATION_CREATED && detail.notification?.data?.type === 'timer_complete') {
+    try {
+      const session = getActiveSession();
+      if (!session || session.mode !== 'timer' || !session.targetGoalMs) return;
+      let elapsed = session.accumulatedMs;
+      if (session.status === 'running') elapsed += Date.now() - session.startedAt;
+      if (elapsed + 500 < session.targetGoalMs) return; // not yet (clock drift guard)
+      // DB only — trigger's notification is already the final one (same id as stop), don't show duplicate
+      resolveActiveSession();
+      // Ensure trigger is cleaned up (already delivered)
+      try { await notifee.cancelTriggerNotification(detail.notification.id); } catch {}
+    } catch (e) {
+      console.warn('[timer_complete background]', e);
+    }
+    return;
+  }
   if (type === EventType.PRESS && detail.pressAction?.id === 'default') {
     const habitId = detail.notification?.data?.habitId;
     if (habitId) {

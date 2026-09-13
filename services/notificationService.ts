@@ -199,6 +199,74 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
   }
 }
 
+export async function scheduleTimerCompletion(habit: Habit, session: ActiveSession) {
+  if (session.mode !== 'timer' || !session.targetGoalMs) return;
+  const now = Date.now();
+  let elapsed = session.accumulatedMs;
+  if (session.status === 'running') elapsed += now - session.startedAt;
+  const remaining = session.targetGoalMs - elapsed;
+  if (remaining <= 500) return;
+  try {
+    await initNotificationChannels();
+    const todayStr = getTodayDateStr();
+    const notifId = `focus_habit_${habit.id}_${todayStr}`;
+    // Use same id as stopSessionNotification so trigger and foreground share one notification (no duplicate)
+    await notifee.cancelTriggerNotification(notifId).catch(() => {});
+    // Compute final mins for trigger body so it matches stop & log (single notification)
+    const { getDailyTotalMs: getTotal } = require('../db/focus');
+    let dbTotal = 0;
+    try { dbTotal = getTotal(habit.id, todayStr); } catch {}
+    let logMinsMs = 0;
+    try {
+      const logs = await getLogsForHabit(habit.id);
+      const t = logs.find((l:any) => l.date === todayStr);
+      logMinsMs = Math.round((t?.loggedMinutes ?? 0) * 60) * 1000;
+    } catch {}
+    const previous = Math.max(dbTotal, logMinsMs);
+    const sessionMins = Math.max(1, Math.round(remaining / 60000));
+    // total after completion: previous + remaining (freshStart already baked into target)
+    const totalMins = Math.round((previous + remaining) / 60000);
+    // Delay 1s so foreground has chance to cancel and show its own (avoid double fire)
+    const trigger: TimestampTrigger = { type: TriggerType.TIMESTAMP, timestamp: now + remaining + 1000 };
+    await notifee.createTriggerNotification(
+      {
+        id: notifId,
+        title: habit.name,
+        body: `logged now: ${sessionMins}m ✓ • logged today: ${totalMins}m ✓`,
+        data: { habitId: String(habit.id), type: 'timer_complete', targetMs: String(session.targetGoalMs) },
+        android: {
+          channelId: TIMER_CHANNEL_ID,
+          smallIcon: 'ic_launcher',
+          color: Colors.primary,
+          pressAction: { id: 'default' },
+          ongoing: false,
+          autoCancel: true,
+          showTimestamp: true,
+          showChronometer: false,
+        },
+      },
+      trigger
+    );
+  } catch (e) {
+    console.warn('scheduleTimerCompletion failed', e);
+  }
+}
+
+export async function cancelTimerCompletion(habitId: number) {
+  try {
+    const todayStr = getTodayDateStr();
+    const notifId = `focus_habit_${habitId}_${todayStr}`;
+    await notifee.cancelTriggerNotification(notifId).catch(() => {});
+    await notifee.cancelTriggerNotification(`timer_complete_${habitId}`).catch(() => {});
+  } catch {}
+  try {
+    const todayStr = getTodayDateStr();
+    const notifId = `focus_habit_${habitId}_${todayStr}`;
+    await notifee.cancelNotification(notifId).catch(() => {});
+  } catch {}
+  try { await notifee.cancelNotification(`timer_complete_${habitId}`); } catch {}
+}
+
 export async function stopSessionNotification(
   habitId: number,
   habitName: string,

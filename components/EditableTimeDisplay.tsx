@@ -24,7 +24,14 @@ function split(ms: number): SegMap {
 
 const totalMs = (g: SegMap) => (g.h * 3600 + g.m * 60 + g.s) * 1000;
 
-export default function EditableTimeDisplay({ valueMs, disabled, onConfirm, ceilDisplay, isFocused, onFocusedChange }: Props) {
+export default function EditableTimeDisplay({
+  valueMs,
+  disabled,
+  onConfirm,
+  ceilDisplay,
+  isFocused,
+  onFocusedChange,
+}: Props) {
   const [active, setActive] = useState<Seg | null>(null);
   const [draft, setDraft] = useState('');
   // Working copy — keeps multi-segment edits consistent without waiting for parent re-render
@@ -237,7 +244,7 @@ const TimeSeg = React.forwardRef<
       style={{
         color: Colors.text,
         width: 72,
-        height: 64,
+        height: 68,
         textAlign: 'center',
         textAlignVertical: 'center',
         paddingHorizontal: 0,

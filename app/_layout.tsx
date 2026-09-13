@@ -111,6 +111,22 @@ export default function RootLayout() {
     // Load focus session state and check stale session on startup
     useFocusStore.getState().loadActiveSession();
 
+    // Background timer watchdog — fires even when app is backgrounded via foreground service
+    // (JS timers are throttled in background, so we poll every 1s; trigger handles exact alarm)
+    const bgInterval = setInterval(() => {
+      try {
+        const { getActiveSession } = require('@/db/focus');
+        const s: any = getActiveSession();
+        if (!s || s.mode !== 'timer' || !s.targetGoalMs) return;
+        let elapsed = s.accumulatedMs;
+        if (s.status === 'running') elapsed += Date.now() - s.startedAt;
+        if (elapsed >= s.targetGoalMs) {
+          // Timer hit zero while backgrounded — complete same as foreground
+          useFocusStore.getState().loadActiveSession();
+        }
+      } catch {}
+    }, 1000);
+
     // Reactive AppState listener (§5) - sync store when returning to foreground
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
@@ -121,6 +137,10 @@ export default function RootLayout() {
 
     // Notifee notification action events (Pause, Resume, Stop, Mark Completed, Reschedule, Start, +1)
     const unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.TRIGGER_NOTIFICATION_CREATED && (detail.notification as any)?.data?.type === 'timer_complete') {
+        useFocusStore.getState().loadActiveSession();
+        return;
+      }
       if (type === EventType.ACTION_PRESS && detail.pressAction?.id) {
         const actionId = detail.pressAction.id;
         if (actionId === 'pause') {
@@ -198,6 +218,7 @@ export default function RootLayout() {
     });
 
     return () => {
+      clearInterval(bgInterval);
       subscription.remove();
       unsubscribeNotifee();
     };

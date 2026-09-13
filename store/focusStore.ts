@@ -12,7 +12,7 @@ import {
 } from '../db/focus';
 import { getHabitById } from '../db/habits';
 import { useHabitStore } from './habitStore';
-import { updateSessionNotification, stopSessionNotification } from '../services/notificationService';
+import { updateSessionNotification, stopSessionNotification, scheduleTimerCompletion, cancelTimerCompletion } from '../services/notificationService';
 import { getTodayDateStr } from '../utils/dates';
 
 export interface StalePromptState {
@@ -60,7 +60,12 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
     set({ activeSession: newSession });
 
     getHabitById(habitId).then((habit) => {
-      if (habit) updateSessionNotification(newSession, habit, freshStart).catch((e) => console.warn('[focusStore] update failed', e));
+      if (habit) {
+        updateSessionNotification(newSession, habit, freshStart).catch((e) => console.warn('[focusStore] update failed', e));
+        if (habit.progressType === 'duration' && newSession.mode === 'timer') {
+          scheduleTimerCompletion(habit, newSession).catch(() => {});
+        }
+      }
     });
     return true;
   },
@@ -73,6 +78,7 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
     set({ activeSession: paused });
 
     if (paused) {
+      cancelTimerCompletion(paused.habitId).catch(() => {});
       getHabitById(paused.habitId).then((habit) => {
         if (habit) updateSessionNotification(paused, habit).catch(e=>console.warn(e));
       });
@@ -88,7 +94,12 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
 
     if (resumed) {
       getHabitById(resumed.habitId).then((habit) => {
-        if (habit) updateSessionNotification(resumed, habit);
+        if (habit) {
+          updateSessionNotification(resumed, habit).catch(()=>{});
+          if (habit.progressType === 'duration' && resumed.mode === 'timer') {
+            scheduleTimerCompletion(habit, resumed).catch(() => {});
+          }
+        }
       });
     }
   },
@@ -97,6 +108,7 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
     const current = get().activeSession;
     if (!current) return;
 
+    cancelTimerCompletion(current.habitId).catch(() => {});
     const result = resolveActiveSession();
     set({ activeSession: null, stalePrompt: null });
     useHabitStore.getState().loadHabits();
@@ -120,6 +132,7 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
       const notificationId = `focus_habit_${current.habitId}_${getTodayDateStr()}`;
       notifee.cancelNotification(notificationId).catch(() => {});
       notifee.stopForegroundService().catch(() => {});
+      cancelTimerCompletion(current.habitId).catch(() => {});
     }
 
     const { db } = require('../db/habits');

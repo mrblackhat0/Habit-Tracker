@@ -73,42 +73,35 @@ export const CompletionConfirmModal: React.FC<CompletionConfirmModalProps> = ({
   }
 
   return (
-    <Modal
-      visible={isMounted}
-      transparent
-      animationType="none"
-      onRequestClose={handleClose}
-    >
+    <Modal visible={isMounted} transparent animationType="none" onRequestClose={handleClose}>
       <TouchableWithoutFeedback onPress={handleClose}>
-        <Animated.View style={backdropStyle} className="flex-1 bg-black/60 justify-end">
+        <Animated.View style={backdropStyle} className="flex-1 justify-end bg-black/60">
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
             <Animated.View
               style={sheetStyle}
-              className="bg-surface border-t border-border rounded-t-3xl px-6 pt-4 pb-8 shadow-2xl items-center"
-            >
+              className="items-center rounded-t-3xl border-t border-border bg-surface px-6 pb-8 pt-4 shadow-2xl">
               {/* Drag handle pill */}
-              <View className="w-10 h-1 bg-border rounded-full self-center mb-4" />
+              <View className="mb-4 h-1 w-10 self-center rounded-full bg-border" />
 
               {/* Warning Header */}
-              <View className="items-center mb-4">
+              <View className="mb-4 items-center">
                 <Ionicons name="alert-circle-outline" size={40} color={DataColors.warning} />
-                <Text className="text-text text-xl font-bold mt-2">Goal Not Reached</Text>
+                <Text className="mt-2 text-xl font-bold text-text">Goal Not Reached</Text>
               </View>
 
               {/* Habit Summary Card */}
-              <View className="w-full flex-row items-center bg-background border border-border rounded-2xl p-4 mb-4">
+              <View className="mb-4 w-full flex-row items-center rounded-2xl border border-border bg-background p-4">
                 <View
-                  className="w-10 h-10 rounded-xl items-center justify-center border border-border mr-3"
-                  style={{ backgroundColor: `${getIconColor(habit.icon)}20` }}
-                >
+                  className="mr-3 h-10 w-10 items-center justify-center rounded-xl border border-border"
+                  style={{ backgroundColor: `${getIconColor(habit.icon)}20` }}>
                   <Ionicons name={habit.icon as any} size={20} color={getIconColor(habit.icon)} />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-text font-bold text-base" numberOfLines={1}>
+                  <Text className="text-base font-bold text-text" numberOfLines={1}>
                     {toTitleCase(habit.name)}
                   </Text>
                   {progressText ? (
-                    <Text className="text-warning text-xs font-semibold mt-0.5">
+                    <Text className="mt-0.5 text-xs font-semibold text-warning">
                       Logged {progressText}
                     </Text>
                   ) : null}
@@ -116,27 +109,26 @@ export const CompletionConfirmModal: React.FC<CompletionConfirmModalProps> = ({
               </View>
 
               {/* Detailed prompt text */}
-              <Text className="text-textMuted text-xs text-center px-2 leading-5 mb-6">
-                You haven&apos;t reached your daily goal yet. Would you like to mark this habit as complete anyway?
+              <Text className="mb-6 px-2 text-center text-xs leading-5 text-textMuted">
+                You haven&apos;t reached your daily goal yet. Would you like to mark this habit as
+                complete anyway?
               </Text>
 
               {/* Action Buttons */}
-              <View className="flex-row gap-3 w-full">
+              <View className="w-full flex-row gap-3">
                 <Pressable
                   onPress={handleClose}
-                  className="flex-1 bg-background border border-border py-3.5 rounded-2xl items-center active:opacity-80"
-                >
-                  <Text className="text-text font-semibold text-sm">Cancel</Text>
+                  className="flex-1 items-center rounded-2xl border border-secondary/10 bg-secondary/5 py-3.5 active:opacity-80">
+                  <Text className="text-sm font-semibold text-secondary">Cancel</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
                     onConfirm(habit);
                     handleClose();
                   }}
-                  className="flex-1 bg-primary py-3.5 rounded-2xl items-center flex-row justify-center gap-1.5 active:opacity-90"
-                >
+                  className="flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl bg-primary py-3.5 active:opacity-90">
                   <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" />
-                  <Text className="text-white font-bold text-sm">Mark Complete</Text>
+                  <Text className="text-sm font-bold text-white">Mark Complete</Text>
                 </Pressable>
               </View>
             </Animated.View>

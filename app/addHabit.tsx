@@ -24,7 +24,6 @@ import { requestNotificationPermission } from '@/services/notificationService';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const AddHabit = () => {
-
   const { habitId } = useLocalSearchParams<{ habitId?: string }>();
   const isEdit = Boolean(habitId);
 
@@ -168,6 +167,7 @@ const AddHabit = () => {
           Icon
         </Text>
         <ScrollView
+          keyboardShouldPersistTaps="always"
           horizontal
           showsHorizontalScrollIndicator={false}
           className="mb-6"

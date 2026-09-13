@@ -31,7 +31,9 @@
           "cameraPermission": "Allow camera to take a profile photo"
         }
       ],
-      "./plugins/with-notification-icon.js"
+      "./plugins/with-notification-icon.js",
+      "expo-sharing",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

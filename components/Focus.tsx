@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { toTitleCase } from '@/utils/utils';
 import { hapticImpact, hapticNotification } from '@/utils/haptics';
-import { View, Text, Pressable, Modal, AppState, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, Pressable, Modal, AppState, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { useFocusEffect, useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, DataColors } from '../constants/Colors';
@@ -11,30 +11,14 @@ import { useHabitStore } from '../store/habitStore';
 import { FocusMode, getDailyTotalMs, resetTodayLoggedMinutes } from '../db/focus';
 import { getTodayDateStr } from '../utils/dates';
 import { requestNotificationPermission } from '@/services/notificationService';
+import EditableTimeDisplay from './EditableTimeDisplay';
 import SegmentedToggle from './SegmentedToggle';
 import AnimatedSwitch from './AnimatedSwitch';
 import ResetFocusModal from './ResetFocusModal';
 import ExitFocusModal from './ExitFocusModal';
 
-
 interface FocusProps {
   habit: Habit;
-}
-
-function formatTimeMs(ms: number): string {
-  const totalSecs = Math.max(0, Math.floor(ms / 1000));
-  const hrs = Math.floor(totalSecs / 3600);
-  const mins = Math.floor((totalSecs % 3600) / 60);
-  const secs = totalSecs % 60;
-
-  const mm = String(mins).padStart(2, '0');
-  const ss = String(secs).padStart(2, '0');
-
-  if (hrs > 0) {
-    const hh = String(hrs).padStart(2, '0');
-    return `${hh}:${mm}:${ss}`;
-  }
-  return `${mm}:${ss}`;
 }
 
 export default function Focus({ habit }: FocusProps) {
@@ -139,6 +123,9 @@ export default function Focus({ habit }: FocusProps) {
   const [lockErrorMessage, setLockErrorMessage] = useState<string | null>(null);
   const [isUiReset, setIsUiReset] = useState<boolean>(false);
   const [resetModalVisible, setResetModalVisible] = useState<boolean>(false);
+  // Exact typed time override (timer: new remaining, stopwatch: new display base)
+  const [editedBaseMs, setEditedBaseMs] = useState<number | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
 
   const todayStr = useMemo(() => getTodayDateStr(), []);
   const goalMinutes = habit.goalMinutes ?? 60;
@@ -211,17 +198,27 @@ export default function Focus({ habit }: FocusProps) {
     if (isCurrentHabitActive) {
       return Math.max(0, targetGoalMs - elapsedMs);
     }
+    if (editedBaseMs !== null) return editedBaseMs;
     const fullGoalMs = selectedGoalMins * 60 * 1000;
     return isUiReset ? fullGoalMs : Math.max(0, fullGoalMs - todayLoggedMs);
-  }, [isCurrentHabitActive, targetGoalMs, elapsedMs, selectedGoalMins, isUiReset, todayLoggedMs]);
+  }, [
+    isCurrentHabitActive,
+    targetGoalMs,
+    elapsedMs,
+    selectedGoalMins,
+    isUiReset,
+    todayLoggedMs,
+    editedBaseMs,
+  ]);
 
   // Stopwatch elapsed display
   const stopwatchDisplayMs = useMemo(() => {
     if (isCurrentHabitActive) {
-      return isUiReset ? elapsedMs : todayLoggedMs + elapsedMs;
+      return (editedBaseMs ?? (isUiReset ? 0 : todayLoggedMs)) + elapsedMs;
     }
+    if (editedBaseMs !== null) return editedBaseMs;
     return isUiReset ? 0 : todayLoggedMs;
-  }, [isCurrentHabitActive, elapsedMs, isUiReset, todayLoggedMs]);
+  }, [isCurrentHabitActive, elapsedMs, isUiReset, todayLoggedMs, editedBaseMs]);
 
   const handleStopAndLog = useCallback(() => {
     stopSession();
@@ -229,6 +226,7 @@ export default function Focus({ habit }: FocusProps) {
     // never flashes the pre-session value before async reload completes
     const fresh = getDailyTotalMs(habit.id, todayStr);
     setTodayLoggedMs((prev) => Math.max(fresh, prev));
+    setEditedBaseMs(null);
   }, [stopSession, habit.id, todayStr]);
 
   const handleStopAndExit = useCallback(() => {
@@ -250,7 +248,15 @@ export default function Focus({ habit }: FocusProps) {
       hapticNotification();
       handleStopAndLog();
     }
-  }, [isRunning, isCurrentHabitActive, activeSession, mode, targetGoalMs, elapsedMs, handleStopAndLog]);
+  }, [
+    isRunning,
+    isCurrentHabitActive,
+    activeSession,
+    mode,
+    targetGoalMs,
+    elapsedMs,
+    handleStopAndLog,
+  ]);
 
   const fullGoalMs = selectedGoalMins * 60 * 1000;
   const progressPercent = useMemo(() => {
@@ -267,9 +273,13 @@ export default function Focus({ habit }: FocusProps) {
     requestNotificationPermission().catch(() => {});
     let targetMs: number | null = null;
     if (mode === 'timer') {
-      const fullGoal = selectedGoalMins * 60 * 1000;
-      const remaining = isUiReset ? fullGoal : Math.max(0, fullGoal - todayLoggedMs);
-      targetMs = remaining > 0 ? remaining : fullGoal;
+      if (editedBaseMs !== null) {
+        targetMs = editedBaseMs;
+      } else {
+        const fullGoal = selectedGoalMins * 60 * 1000;
+        const remaining = isUiReset ? fullGoal : Math.max(0, fullGoal - todayLoggedMs);
+        targetMs = remaining > 0 ? remaining : fullGoal;
+      }
     }
 
     const success = startSession(habit.id, mode, targetMs, isUiReset);
@@ -284,6 +294,7 @@ export default function Focus({ habit }: FocusProps) {
       cancelSessionWithoutLogging();
     }
     setIsUiReset(true);
+    setEditedBaseMs(null);
   };
 
   const handleClearDb = () => {
@@ -293,23 +304,34 @@ export default function Focus({ habit }: FocusProps) {
     resetTodayLoggedMinutes(habit.id, todayStr);
     useHabitStore.getState().loadHabits();
     setIsUiReset(false);
+    setEditedBaseMs(null);
+  };
+
+  // Typed time supersedes reset view — show exact value from here on
+  const handleTimeConfirm = (ms: number) => {
+    setEditedBaseMs(ms);
+    setIsUiReset(false);
   };
 
   const currentMode = isCurrentHabitActive ? activeSession!.mode : mode;
 
   return (
-    <View className="flex-1 bg-background pb-8 pt-2">
+    <TouchableWithoutFeedback onPress={() => { setIsFocused(false); Keyboard.dismiss(); }} accessible={false}>
+      <View className="flex-1 bg-background pb-8 pt-2">
       {/* Animated Mode Selector */}
-      <SegmentedToggle
-        fullWidth={false}
-        options={['Timer', 'Stopwatch']}
-        value={currentMode === 'timer' ? 'Timer' : 'Stopwatch'}
-        onChange={(val) => {
-          if (!isCurrentHabitActive) {
-            setMode(val === 'Timer' ? 'timer' : 'stopwatch');
-          }
-        }}
-      />
+      <View pointerEvents={isFocused ? 'none' : 'auto'} style={{ opacity: isFocused ? 0.5 : 1 }}>
+        <SegmentedToggle
+          fullWidth={false}
+          options={['Timer', 'Stopwatch']}
+          value={currentMode === 'timer' ? 'Timer' : 'Stopwatch'}
+          onChange={(val) => {
+            if (!isCurrentHabitActive) {
+              setMode(val === 'Timer' ? 'timer' : 'stopwatch');
+              setEditedBaseMs(null);
+            }
+          }}
+        />
+      </View>
 
       {/* Lock Banner if another habit session is active */}
       {isOtherHabitActive && (
@@ -350,6 +372,11 @@ export default function Focus({ habit }: FocusProps) {
           </Text>
           <Pressable
             onPress={() => {
+              if (isFocused) {
+                Keyboard.dismiss();
+                setIsFocused(false);
+                return;
+              }
               if (isUiReset) {
                 hapticImpact();
                 setIsUiReset(false);
@@ -357,8 +384,8 @@ export default function Focus({ habit }: FocusProps) {
                 setResetModalVisible(true);
               }
             }}
-            disabled={isRunning}
-            className="flex-row items-center gap-1 rounded-xl border border-border bg-background px-2.5 py-1 active:opacity-80">
+            disabled={isRunning || isFocused}
+            className={`flex-row items-center gap-1 rounded-xl border border-border bg-background px-2.5 py-1 ${isFocused || isRunning ? 'opacity-40' : 'active:opacity-80'}`}>
             <Ionicons
               name={isUiReset ? 'arrow-undo-outline' : 'reload-outline'}
               size={13}
@@ -372,10 +399,14 @@ export default function Focus({ habit }: FocusProps) {
 
         {currentMode === 'timer' ? (
           <>
-            <Text className="my-2 text-5xl font-black tracking-tight text-text">
-              {/* ceil: countdown shows the second still in hand (8m44.7s -> 8m45s) */}
-              {formatTimeMs(Math.ceil(remainingMs / 1000) * 1000)}
-            </Text>
+            <EditableTimeDisplay
+              valueMs={remainingMs}
+              disabled={isCurrentHabitActive}
+              onConfirm={handleTimeConfirm}
+              ceilDisplay
+              isFocused={isFocused}
+              onFocusedChange={setIsFocused}
+            />
             <Text className="mb-4 text-xs font-medium text-textMuted">
               {progressPercent}% of {selectedGoalMins}m goal completed
               {!isUiReset && todayLoggedMins > 0 ? ` (${todayLoggedMins}m logged today)` : ''}
@@ -395,10 +426,12 @@ export default function Focus({ habit }: FocusProps) {
                 {timeOptions.map((mins) => (
                   <Pressable
                     key={mins}
+                    disabled={isFocused}
                     onPress={() => {
                       setSelectedGoalMins(mins);
+                      setEditedBaseMs(null);
                     }}
-                    className={`rounded-xl border px-3 py-1.5 ${
+                    className={`rounded-xl border px-3 py-1.5 ${isFocused ? 'opacity-40' : ''} ${
                       selectedGoalMins === mins
                         ? 'border-primary bg-primary'
                         : 'border-border bg-background'
@@ -416,9 +449,13 @@ export default function Focus({ habit }: FocusProps) {
           </>
         ) : (
           <>
-            <Text className="my-2 text-5xl font-black tracking-tight text-text">
-              {formatTimeMs(stopwatchDisplayMs)}
-            </Text>
+            <EditableTimeDisplay
+              valueMs={stopwatchDisplayMs}
+              disabled={isCurrentHabitActive}
+              onConfirm={handleTimeConfirm}
+              isFocused={isFocused}
+              onFocusedChange={setIsFocused}
+            />
             <Text className="mt-1 text-xs font-medium text-textMuted">
               {!isUiReset && todayLoggedMins > 0
                 ? `Continuing from ${todayLoggedMins}m logged today`
@@ -433,9 +470,9 @@ export default function Focus({ habit }: FocusProps) {
         {!isCurrentHabitActive ? (
           <Pressable
             onPress={handleStart}
-            disabled={isOtherHabitActive}
+            disabled={isOtherHabitActive || isFocused}
             className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${
-              isOtherHabitActive ? 'bg-surface opacity-50' : 'bg-primary active:opacity-90'
+              isOtherHabitActive || isFocused ? 'bg-surface opacity-50' : 'bg-primary active:opacity-90'
             }`}>
             <Ionicons name="play" size={20} color="#FFFFFF" />
             <Text className="text-base font-bold text-white">Start Focus Session</Text>
@@ -445,14 +482,16 @@ export default function Focus({ habit }: FocusProps) {
             {activeSession?.status === 'running' ? (
               <Pressable
                 onPress={pauseSession}
-                className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-surface py-4 active:opacity-80">
+                disabled={isFocused}
+                className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-surface py-4 ${isFocused ? 'opacity-40' : 'active:opacity-80'}`}>
                 <Ionicons name="pause" size={20} color={Colors.text} />
                 <Text className="text-base font-bold text-text">Pause</Text>
               </Pressable>
             ) : (
               <Pressable
                 onPress={resumeSession}
-                className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-primary py-4 active:opacity-90">
+                disabled={isFocused}
+                className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-primary py-4 ${isFocused ? 'opacity-40' : 'active:opacity-90'}`}>
                 <Ionicons name="play" size={20} color="#FFFFFF" />
                 <Text className="text-base font-bold text-white">Resume</Text>
               </Pressable>
@@ -460,7 +499,8 @@ export default function Focus({ habit }: FocusProps) {
 
             <Pressable
               onPress={handleStopAndLog}
-              className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-danger py-4 active:opacity-90">
+              disabled={isFocused}
+              className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-danger py-4 ${isFocused ? 'opacity-40' : 'active:opacity-90'}`}>
               <Ionicons name="square" size={18} color="#FFFFFF" />
               <Text className="text-base font-bold text-white">Stop & Log</Text>
             </Pressable>
@@ -490,6 +530,7 @@ export default function Focus({ habit }: FocusProps) {
         </View>
         <AnimatedSwitch
           value={strictMode}
+          disabled={isFocused}
           onValueChange={(val) => {
             hapticImpact();
             setStrictMode(val);
@@ -546,6 +587,7 @@ export default function Focus({ habit }: FocusProps) {
           </View>
         </Modal>
       )}
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }

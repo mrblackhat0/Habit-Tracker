@@ -309,6 +309,7 @@ export async function stopSessionNotification(
    ========================================== */
 
 const REMINDER_CHANNEL_ID = 'habit_reminders_channel';
+const ALARM_CHANNEL_ID = 'habit_alarm_channel';
 const WEEKLY_CHANNEL_ID = 'weekly_overview_channel';
 const WEEKLY_ID = 'weekly-overview-sunday-7am';
 const DAY_MAP: Record<string, number> = {
@@ -331,11 +332,30 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
+function isAlarmEnabled(): boolean {
+  try {
+    const s = require('@/store/store').useStore.getState();
+    if (s._hydrated) return s.alarmEnabled === true;
+    if (s.alarmEnabled === true) return true;
+  } catch {}
+  try {
+    const row = (db as any).getFirstSync?.(`SELECT value FROM app_settings WHERE key = ?`, ['alarmEnabled']);
+    if (row) return row.value === '1';
+  } catch {}
+  return false;
+}
+
 export async function initReminderChannel() {
   try {
     await notifee.createChannel({
       id: REMINDER_CHANNEL_ID,
       name: 'Habit Reminders',
+      importance: AndroidImportance.HIGH,
+      sound: 'default',
+    });
+    await notifee.createChannel({
+      id: ALARM_CHANNEL_ID,
+      name: 'Habit Alarm',
       importance: AndroidImportance.HIGH,
       sound: 'default',
     });
@@ -492,13 +512,15 @@ export async function syncHabitReminder(
     };
 
     try {
+      const useAlarm = isAlarmEnabled();
       await notifee.createTriggerNotification(
         {
           id: `habit_reminder_${habitId}_day_${dayOfWeek}`,
           title: `Reminder: ${habitName}`,
+          subtitle: useAlarm ? 'Alarm • tap to act' : undefined,
           data: { habitId: String(habitId) },
           android: {
-            channelId: REMINDER_CHANNEL_ID,
+            channelId: useAlarm ? ALARM_CHANNEL_ID : REMINDER_CHANNEL_ID,
             smallIcon: 'ic_launcher',
             color: Colors.primary,
             showTimestamp: true,
@@ -506,6 +528,7 @@ export async function syncHabitReminder(
               id: 'default',
             },
             actions,
+            ...(useAlarm ? { fullScreenAction: { id: 'default' } as any, category: 'alarm' as any } : {}),
           },
         },
         trigger
@@ -628,13 +651,15 @@ export async function handleRescheduleAction(
       timestamp: snoozeTime,
     };
 
+    const useAlarmReschedule = isAlarmEnabled();
     await notifee.createTriggerNotification(
       {
         id: `habit_reminder_${habitId}_rescheduled_${snoozeTime}`,
         title: `Reminder: ${titleName}`,
+        subtitle: useAlarmReschedule ? 'Alarm • snoozed' : undefined,
         data: { habitId: String(habitId) },
         android: {
-          channelId: REMINDER_CHANNEL_ID,
+          channelId: useAlarmReschedule ? ALARM_CHANNEL_ID : REMINDER_CHANNEL_ID,
           smallIcon: 'ic_launcher',
           color: Colors.primary,
           showTimestamp: true,
@@ -642,6 +667,7 @@ export async function handleRescheduleAction(
             id: 'default',
           },
           actions,
+          ...(useAlarmReschedule ? { fullScreenAction: { id: 'default' } as any, category: 'alarm' as any } : {}),
         },
       },
       trigger

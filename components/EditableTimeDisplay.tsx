@@ -160,7 +160,7 @@ export default function EditableTimeDisplay({
             ref={hRef}
             {...segProps('h')}
             disabled={disabled}
-            returnKey="done"
+            returnKey="next"
             onFocus={() => focusSeg('h')}
             onChangeText={(t) => changeSeg('h', t)}
             onBlur={() => blurSeg('h')}
@@ -177,7 +177,7 @@ export default function EditableTimeDisplay({
         ref={mRef}
         {...segProps('m')}
         disabled={disabled}
-        returnKey="done"
+        returnKey="next"
         onFocus={() => focusSeg('m')}
         onChangeText={(t) => changeSeg('m', t)}
         onBlur={() => blurSeg('m')}

@@ -52,10 +52,12 @@ export default function Settings() {
     hapticsEnabled,
     weeklyOverviewEnabled,
     focusNotificationsEnabled,
+    alarmEnabled,
     setUserName,
     setHapticsEnabled,
     setWeeklyOverview,
     setFocusNotifications,
+    setAlarmEnabled,
     triggerHaptic,
     hydrate,
   } = useStore();
@@ -121,6 +123,14 @@ export default function Settings() {
       setFocusNotifications(v);
     },
     [setFocusNotifications, triggerHaptic]
+  );
+
+  const onToggleAlarm = useCallback(
+    (v: boolean) => {
+      triggerHaptic('light');
+      setAlarmEnabled(v);
+    },
+    [setAlarmEnabled, triggerHaptic]
   );
 
   useEffect(() => {
@@ -644,6 +654,30 @@ export default function Settings() {
                 value={focusNotificationsEnabled}
                 onValueChange={onToggleFocusNotif}
                 accessibilityLabel="Focus notifications for timer and stopwatch"
+              />
+            </View>
+            <SettingDivider />
+            {/* Alarm reminders — full-screen alarm style */}
+            <View className="flex-row items-center justify-between px-3.5 py-3.5">
+              <View className="flex-1 flex-row items-center gap-3 pr-3">
+                <View
+                  className="h-10 w-10 items-center justify-center rounded-xl border border-border"
+                  style={{ backgroundColor: `${DataColors.danger}14` }}>
+                  <Ionicons name="alarm-outline" size={20} color={DataColors.danger} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[15px] font-semibold text-text">Alarm reminders</Text>
+                  <Text className="mt-0.5 text-xs text-secondary">
+                    {alarmEnabled
+                      ? 'Full-screen alarm for reminders'
+                      : 'Standard notification reminders'}
+                  </Text>
+                </View>
+              </View>
+              <AnimatedSwitch
+                value={alarmEnabled}
+                onValueChange={onToggleAlarm}
+                accessibilityLabel="Alarm reminders"
               />
             </View>
           </View>

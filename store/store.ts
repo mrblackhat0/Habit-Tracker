@@ -12,6 +12,7 @@ export interface AppState {
   startOfWeek: StartOfWeek;
   weeklyOverviewEnabled: boolean; // Sunday 07:00 weekly summary
   focusNotificationsEnabled: boolean; // timer/stopwatch foreground service
+  alarmEnabled: boolean; // alarm-style habit reminders
   hasCompletedOnboarding: boolean;
   _hydrated: boolean;
   setUserName: (name: string) => void;
@@ -20,6 +21,7 @@ export interface AppState {
   setStartOfWeek: (day: StartOfWeek) => void;
   setWeeklyOverview: (enabled: boolean) => void;
   setFocusNotifications: (enabled: boolean) => void;
+  setAlarmEnabled: (enabled: boolean) => void;
   completeOnboarding: (name: string, profileUri?: string | null) => Promise<void>;
   resetOnboarding: () => Promise<void>;
   hydrate: () => Promise<void>;
@@ -55,6 +57,7 @@ export const useStore = create<AppState>((set, get) => ({
   startOfWeek: 'Sun',
   weeklyOverviewEnabled: false,
   focusNotificationsEnabled: true,
+  alarmEnabled: false,
   hasCompletedOnboarding: false,
   _hydrated: false,
 
@@ -122,6 +125,21 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  setAlarmEnabled: (enabled: boolean) => {
+    set({ alarmEnabled: enabled });
+    persistSetting('alarmEnabled', enabled ? '1' : '0');
+    // resync all habit reminders to apply alarm style
+    import('@/db/habits').then(async ({ db }) => {
+      try {
+        const habits: any[] = await db.getAllAsync(`SELECT * FROM habits`);
+        const { syncHabitReminder } = await import('@/services/notificationService');
+        for (const h of habits) {
+          await syncHabitReminder(h.id, h.name, h.time, h.occurrence, h.reminder).catch(() => {});
+        }
+      } catch {}
+    });
+  },
+
   completeOnboarding: async (name: string, profileUri?: string | null) => {
     const clean = name.trim().slice(0, 24);
     set({
@@ -151,13 +169,14 @@ export const useStore = create<AppState>((set, get) => ({
   hydrate: async () => {
     if (get()._hydrated) return;
     try {
-      const [userName, haptics, sow, weeklyEnabled, focusNotif, profileUri, onboarded] =
+      const [userName, haptics, sow, weeklyEnabled, focusNotif, alarmEnabled, profileUri, onboarded] =
         await Promise.all([
           loadSetting('userName'),
           loadSetting('hapticsEnabled'),
           loadSetting('startOfWeek'),
           loadSetting('weeklyOverviewEnabled'),
           loadSetting('focusNotificationsEnabled'),
+          loadSetting('alarmEnabled'),
           loadSetting('profileImageUri'),
           loadSetting('hasCompletedOnboarding'),
         ]);
@@ -174,6 +193,7 @@ export const useStore = create<AppState>((set, get) => ({
         startOfWeek: sow === 'Mon' || sow === 'Sun' ? sow : 'Sun',
         weeklyOverviewEnabled: weekly,
         focusNotificationsEnabled: focusNotif == null ? true : focusNotif === '1',
+        alarmEnabled: alarmEnabled === '1',
         hasCompletedOnboarding: onboarded === '1',
         _hydrated: true,
       });

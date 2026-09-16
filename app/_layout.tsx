@@ -2,13 +2,12 @@ import '@/global.css';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { router, Stack, ThemeProvider, useSegments } from 'expo-router';
-import { ActivityIndicator, StatusBar, View } from 'react-native';
+import { StatusBar, View } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { Colors, CustomDarkTheme } from '@/constants/Colors';
 import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 import { enableFreeze } from 'react-native-screens';
-import { initDb } from '@/db/schema';
-import { SQLiteProvider } from 'expo-sqlite';
+import { dbReady } from '@/db/database';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,12 +25,7 @@ configureReanimatedLogger({
 SplashScreen.preventAutoHideAsync();
 
 import { useHabitStore } from '@/store/habitStore';
-import {
-  handleMarkCompletedAction,
-  handleRescheduleAction,
-  handleStartTimerAction,
-  handlePlusOneAction,
-} from '@/services/notificationService';
+import { handleMarkCompletedAction, handleStartTimerAction } from '@/services/notificationService';
 
 function NavigationGate() {
   const segments = useSegments();
@@ -75,23 +69,14 @@ export default function RootLayout() {
         const habitId = initial.notification.data?.habitId;
         if (habitId) {
           try {
+            const { dbReady } = await import('@/db/database');
+            await dbReady;
             const { getHabitById } = await import('@/db/habits');
             const habit = await getHabitById(Number(habitId));
             if (habit && habit.progressType !== 'check') {
               // build stack: home -> details -> goal so back goes goal->details->home
-              router.dismissAll?.();
               router.replace('/(tabs)');
-              setTimeout(() => {
-                router.push({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
-                setTimeout(
-                  () =>
-                    router.push({
-                      pathname: '/habit/[id]/goal',
-                      params: { id: habitId.toString() },
-                    }),
-                  150
-                );
-              }, 100);
+              router.navigate({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } });
             } else {
               router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
             }
@@ -104,12 +89,15 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, hydrated]);
 
   useEffect(() => {
+    // Sequenced startup: nothing queries before the single connection is ready.
+    dbReady
+      .then(() => useStore.getState().hydrate())
+      .then(() => useFocusStore.getState().loadActiveSession())
+      .catch(() => {});
     // Warm notification channels in background so first timer start is instant
     import('@/services/notificationService')
       .then((m) => m.initNotificationChannels().catch(() => {}))
       .catch(() => {});
-    // Load focus session state and check stale session on startup
-    useFocusStore.getState().loadActiveSession();
 
     // Background timer watchdog — fires even when app is backgrounded via foreground service
     // (JS timers are throttled in background, so we poll every 1s; trigger handles exact alarm)
@@ -137,7 +125,10 @@ export default function RootLayout() {
 
     // Notifee notification action events (Pause, Resume, Stop, Mark Completed, Reschedule, Start, +1)
     const unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }) => {
-      if (type === EventType.TRIGGER_NOTIFICATION_CREATED && (detail.notification as any)?.data?.type === 'timer_complete') {
+      if (
+        type === EventType.TRIGGER_NOTIFICATION_CREATED &&
+        (detail.notification as any)?.data?.type === 'timer_complete'
+      ) {
         useFocusStore.getState().loadActiveSession();
         return;
       }
@@ -179,15 +170,6 @@ export default function RootLayout() {
               }
             );
           }
-        } else if (actionId === 'plus_one') {
-          const habitId = detail.notification?.data?.habitId;
-          if (habitId) {
-            handlePlusOneAction(parseInt(habitId as string, 10), detail.notification?.id).then(
-              () => {
-                useHabitStore.getState().loadHabits();
-              }
-            );
-          }
         }
       } else if (type === EventType.PRESS && detail.pressAction?.id === 'default') {
         const habitId = detail.notification?.data?.habitId;
@@ -197,15 +179,10 @@ export default function RootLayout() {
               const { getHabitById } = await import('@/db/habits');
               const habit = await getHabitById(Number(habitId));
               if (habit && habit.progressType !== 'check') {
-                router.push({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
-                setTimeout(
-                  () =>
-                    router.push({
-                      pathname: '/habit/[id]/goal',
-                      params: { id: habitId.toString() },
-                    }),
-                  80
-                );
+                router.navigate({
+                  pathname: '/habit/[id]/goal',
+                  params: { id: habitId.toString() },
+                });
               } else {
                 router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
               }
@@ -224,41 +201,34 @@ export default function RootLayout() {
     };
   }, []);
 
-  if (!appReady || !hydrated)
-    return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator size={'large'} color="#10b981" />
-      </View>
-    ); // splash stays visible, nothing renders underneath
+  if (!appReady || !hydrated) return null; // splash stays visible, nothing renders underneath
 
   return (
     <SafeAreaProvider>
-      <SQLiteProvider databaseName="habits.db" onInit={initDb}>
-        <ThemeProvider value={CustomDarkTheme}>
-          <StatusBar translucent barStyle="light-content" backgroundColor={Colors.background} />
-          <NavigationGate />
-          <Stack
-            initialRouteName={hasCompletedOnboarding ? '(tabs)' : 'onboarding'}
-            screenOptions={{
-              headerStyle: { backgroundColor: Colors.background },
-              headerTintColor: Colors.text,
-              contentStyle: { backgroundColor: Colors.background },
-              animation: 'slide_from_right',
-            }}>
-            <Stack.Screen
-              name="onboarding"
-              options={{ headerShown: false, gestureEnabled: false, animation: 'none' }}
-            />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="addHabit" options={{ headerShown: true }} />
-            <Stack.Screen name="habit/[id]" options={{ headerShown: true }} />
-            <Stack.Screen
-              name="habit/[id]/goal"
-              options={{ headerShown: true, headerBackTitle: 'Back' }}
-            />
-          </Stack>
-        </ThemeProvider>
-      </SQLiteProvider>
+      <ThemeProvider value={CustomDarkTheme}>
+        <StatusBar translucent barStyle="light-content" backgroundColor={Colors.background} />
+        <NavigationGate />
+        <Stack
+          initialRouteName={hasCompletedOnboarding ? '(tabs)' : 'onboarding'}
+          screenOptions={{
+            headerStyle: { backgroundColor: Colors.background },
+            headerTintColor: Colors.text,
+            contentStyle: { backgroundColor: Colors.background },
+            animation: 'slide_from_right',
+          }}>
+          <Stack.Screen
+            name="onboarding"
+            options={{ headerShown: false, gestureEnabled: false, animation: 'none' }}
+          />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="addHabit" options={{ headerShown: true }} />
+          <Stack.Screen name="habit/[id]" options={{ headerShown: true }} />
+          <Stack.Screen
+            name="habit/[id]/goal"
+            options={{ headerShown: true, headerBackTitle: 'Back' }}
+          />
+        </Stack>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

@@ -21,7 +21,6 @@ export interface AppState {
   setStartOfWeek: (day: StartOfWeek) => void;
   setWeeklyOverview: (enabled: boolean) => void;
   setFocusNotifications: (enabled: boolean) => void;
-  setAlarmEnabled: (enabled: boolean) => void;
   completeOnboarding: (name: string, profileUri?: string | null) => Promise<void>;
   resetOnboarding: () => Promise<void>;
   hydrate: () => Promise<void>;
@@ -116,7 +115,9 @@ export const useStore = create<AppState>((set, get) => ({
           const { getActiveSession } = await import('@/db/focus');
           const { getHabitById } = await import('@/db/habits');
           const { updateSessionNotification } = await import('@/services/notificationService');
-          const s = getActiveSession() ?? (await import('@/store/focusStore')).useFocusStore.getState().activeSession;
+          const s =
+            getActiveSession() ??
+            (await import('@/store/focusStore')).useFocusStore.getState().activeSession;
           if (!s) return;
           const h: any = await getHabitById(s.habitId);
           if (h) await updateSessionNotification(s, h);
@@ -125,38 +126,24 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  setAlarmEnabled: (enabled: boolean) => {
-    set({ alarmEnabled: enabled });
-    persistSetting('alarmEnabled', enabled ? '1' : '0');
-    // resync all habit reminders to apply alarm style
-    import('@/db/habits').then(async ({ db }) => {
-      try {
-        const habits: any[] = await db.getAllAsync(`SELECT * FROM habits`);
-        const { syncHabitReminder } = await import('@/services/notificationService');
-        for (const h of habits) {
-          await syncHabitReminder(h.id, h.name, h.time, h.occurrence, h.reminder).catch(() => {});
-        }
-      } catch {}
-    });
-  },
-
   completeOnboarding: async (name: string, profileUri?: string | null) => {
     const clean = name.trim().slice(0, 24);
+    // When profileUri is null (stale local state from onboarding), fall back to
+    // the store value — pickProfileImage already persisted it via setProfileImageUri.
+    const resolvedUri = profileUri ?? get().profileImageUri;
     set({
       userName: clean,
-      profileImageUri: profileUri !== undefined ? profileUri : get().profileImageUri,
+      profileImageUri: resolvedUri,
       hasCompletedOnboarding: true,
     });
     await persistSetting('userName', clean);
-    if (profileUri !== undefined) {
-      if (profileUri) {
-        await persistSetting('profileImageUri', profileUri);
-      } else {
-        const { db } = await import('@/db/habits');
-        await db
-          .runAsync(`DELETE FROM app_settings WHERE key = ?`, ['profileImageUri'])
-          .catch(() => {});
-      }
+    if (resolvedUri) {
+      await persistSetting('profileImageUri', resolvedUri);
+    } else {
+      const { db } = await import('@/db/habits');
+      await db
+        .runAsync(`DELETE FROM app_settings WHERE key = ?`, ['profileImageUri'])
+        .catch(() => {});
     }
     await persistSetting('hasCompletedOnboarding', '1');
   },
@@ -168,18 +155,28 @@ export const useStore = create<AppState>((set, get) => ({
 
   hydrate: async () => {
     if (get()._hydrated) return;
+    const { dbReady } = await import('@/db/database');
+    await dbReady;
     try {
-      const [userName, haptics, sow, weeklyEnabled, focusNotif, alarmEnabled, profileUri, onboarded] =
-        await Promise.all([
-          loadSetting('userName'),
-          loadSetting('hapticsEnabled'),
-          loadSetting('startOfWeek'),
-          loadSetting('weeklyOverviewEnabled'),
-          loadSetting('focusNotificationsEnabled'),
-          loadSetting('alarmEnabled'),
-          loadSetting('profileImageUri'),
-          loadSetting('hasCompletedOnboarding'),
-        ]);
+      const [
+        userName,
+        haptics,
+        sow,
+        weeklyEnabled,
+        focusNotif,
+        alarmEnabled,
+        profileUri,
+        onboarded,
+      ] = await Promise.all([
+        loadSetting('userName'),
+        loadSetting('hapticsEnabled'),
+        loadSetting('startOfWeek'),
+        loadSetting('weeklyOverviewEnabled'),
+        loadSetting('focusNotificationsEnabled'),
+        loadSetting('alarmEnabled'),
+        loadSetting('profileImageUri'),
+        loadSetting('hasCompletedOnboarding'),
+      ]);
       // migration: fallback to old dailyReminderEnabled if weekly key missing
       let weekly = weeklyEnabled === '1';
       if (weeklyEnabled == null) {
@@ -211,6 +208,3 @@ export const useStore = create<AppState>((set, get) => ({
     } catch {}
   },
 }));
-
-// auto-hydrate on import (non-blocking)
-useStore.getState().hydrate();

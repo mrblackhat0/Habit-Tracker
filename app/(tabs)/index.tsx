@@ -114,6 +114,7 @@ export default function Home() {
   const loadHabits = useHabitStore((state) => state.loadHabits);
   const toggleCompletion = useHabitStore((state) => state.toggleCompletion);
   const resetCompletion = useHabitStore((state) => state.resetCompletion);
+  const markAsUnComplete = useHabitStore((state) => state.markAsUnComplete);
   const deleteHabit = useHabitStore((state) => state.deleteHabit);
   const archiveHabit = useHabitStore((state) => state.archiveHabit);
   const unarchiveHabit = useHabitStore((state) => state.unarchiveHabit);
@@ -540,7 +541,8 @@ export default function Home() {
         visible={uncompleteModalVisible}
         habit={uncompleteHabit}
         onClose={() => setUncompleteModalVisible(false)}
-        onConfirm={(h) => resetCompletion(h.id)}
+        onReset={(h) => resetCompletion(h.id)}
+        onConfirm={(h) => markAsUnComplete(h.id)}
       />
     </View>
   );

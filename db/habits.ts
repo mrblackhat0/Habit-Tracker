@@ -5,22 +5,9 @@ import {
   getPrevDateStr,
   getNextScheduledDateStr,
 } from '../utils/dates';
-import { openDatabaseSync } from 'expo-sqlite';
-
-export const db = openDatabaseSync('habits.db');
-try { db.execSync('PRAGMA busy_timeout = 5000;'); } catch {}
-try { db.execSync('PRAGMA journal_mode = WAL;'); } catch {}
-
-try {
-  db.execSync(`ALTER TABLE habits ADD COLUMN reminder INTEGER NOT NULL DEFAULT 0;`);
-  db.execSync(`UPDATE habits SET reminder = 1 WHERE time IS NOT NULL AND time != '';`);
-} catch {}
-try {
-  db.execSync(`ALTER TABLE habits ADD COLUMN strictMode INTEGER NOT NULL DEFAULT 0;`);
-} catch {}
-try {
-  db.execSync(`ALTER TABLE habits ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;`);
-} catch {}
+import { db } from './database';
+export { db };
+export { dbReady } from './database';
 
 export type ProgressType = 'duration' | 'quantity' | 'check';
 

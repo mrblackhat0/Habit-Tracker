@@ -72,32 +72,28 @@ export const HabitActionSheet: React.FC<HabitActionSheetProps> = ({
   if (!isMounted || !habit) return null;
 
   return (
-    <Modal
-      visible={isMounted}
-      transparent
-      animationType="none"
-      onRequestClose={handleClose}
-    >
+    <Modal visible={isMounted} transparent animationType="none" onRequestClose={handleClose}>
       <TouchableWithoutFeedback onPress={handleClose}>
-        <Animated.View style={backdropStyle} className="flex-1 bg-black/60 justify-end">
+        <Animated.View style={backdropStyle} className="flex-1 justify-end bg-black/60">
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-            <Animated.View style={sheetStyle} className="bg-surface border-t border-border rounded-t-3xl px-6 pt-4 pb-8 shadow-2xl">
+            <Animated.View
+              style={sheetStyle}
+              className="rounded-t-3xl border-t border-border bg-surface px-6 pb-8 pt-4 shadow-2xl">
               {/* Drag handle pill */}
-              <View className="w-10 h-1 bg-border rounded-full self-center mb-4" />
+              <View className="mb-4 h-1 w-10 self-center rounded-full bg-border" />
 
               {/* Habit Header */}
-              <View className="flex-row items-center mb-6 pb-4 border-b border-border">
+              <View className="mb-6 flex-row items-center border-b border-border pb-4">
                 <View
-                  className="w-10 h-10 rounded-xl items-center justify-center border border-border mr-3"
-                  style={{ backgroundColor: `${getIconColor(habit.icon)}20` }}
-                >
+                  className="mr-3 h-10 w-10 items-center justify-center rounded-xl border border-border"
+                  style={{ backgroundColor: `${getIconColor(habit.icon)}20` }}>
                   <Ionicons name={habit.icon as any} size={20} color={getIconColor(habit.icon)} />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-text font-bold text-lg" numberOfLines={1}>
+                  <Text className="text-lg font-bold text-text" numberOfLines={1}>
                     {toTitleCase(habit.name)}
                   </Text>
-                  <Text className="text-textMuted text-xs capitalize">
+                  <Text className="text-xs capitalize text-textMuted">
                     {habit.progressType} • {habit.occurrence}
                   </Text>
                 </View>
@@ -106,68 +102,78 @@ export const HabitActionSheet: React.FC<HabitActionSheetProps> = ({
               {!confirmingDelete ? (
                 /* Action Options */
                 <View className="gap-3">
-                  {/* Edit */}
-                  <Pressable
-                    onPress={() => {
-                      onEdit(habit);
-                      handleClose();
-                    }}
-                    className="flex-row items-center bg-background border border-border rounded-2xl p-4 active:opacity-80"
-                  >
-                    <Ionicons name="create-outline" size={20} color={Colors.text} className="mr-3" />
-                    <Text className="text-text text-base font-semibold ml-3">Edit Habit</Text>
-                  </Pressable>
-
                   {/* Archive */}
                   <Pressable
                     onPress={() => {
                       if (onArchive) onArchive(habit);
                       handleClose();
                     }}
-                    className="flex-row items-center bg-background border border-border rounded-2xl p-4 active:opacity-80"
-                  >
-                    <Ionicons name="archive-outline" size={20} color={Colors.secondary} className="mr-3" />
-                    <Text className="text-text text-base font-semibold ml-3">
+                    className="flex-row items-center rounded-2xl border border-secondary/30 bg-secondary/5 p-4 active:opacity-80">
+                    <Ionicons
+                      name="archive-outline"
+                      size={20}
+                      color={Colors.secondary}
+                      className="mr-3"
+                    />
+                    <Text className="ml-3 text-base font-semibold text-secondary">
                       {habit.archived ? 'Unarchive Habit' : 'Archive Habit'}
                     </Text>
+                  </Pressable>
+
+                  {/* Edit */}
+                  <Pressable
+                    onPress={() => {
+                      onEdit(habit);
+                      handleClose();
+                    }}
+                    className="flex-row items-center rounded-2xl border border-primary/30 bg-primary/5 p-4 active:opacity-80">
+                    <Ionicons
+                      name="create-outline"
+                      size={20}
+                      color={Colors.primary}
+                      className="mr-3"
+                    />
+                    <Text className="ml-3 text-base font-semibold text-primary">Edit Habit</Text>
                   </Pressable>
 
                   {/* Delete */}
                   <Pressable
                     onPress={() => setConfirmingDelete(true)}
-                    className="flex-row items-center bg-background border border-border rounded-2xl p-4 active:opacity-80"
-                  >
-                    <Ionicons name="trash-outline" size={20} color={DataColors.danger} className="mr-3" />
-                    <Text className="text-danger text-base font-semibold ml-3">Delete Habit</Text>
+                    className="flex-row items-center rounded-2xl border border-danger/30 bg-danger/5 p-4 active:opacity-80">
+                    <Ionicons
+                      name="trash-outline"
+                      size={20}
+                      color={DataColors.danger}
+                      className="mr-3"
+                    />
+                    <Text className="ml-3 text-base font-semibold text-danger">Delete Habit</Text>
                   </Pressable>
-
                 </View>
               ) : (
                 /* Inline Delete Confirmation */
                 <View className="gap-4">
                   <View className="items-center py-2">
                     <Ionicons name="warning-outline" size={36} color={DataColors.danger} />
-                    <Text className="text-text text-lg font-bold mt-2">Delete this habit?</Text>
-                    <Text className="text-textMuted text-xs text-center mt-1 px-4">
-                      This will permanently remove &quot;{toTitleCase(habit.name)}&quot; and all associated log history.
+                    <Text className="mt-2 text-lg font-bold text-text">Delete this habit?</Text>
+                    <Text className="mt-1 px-4 text-center text-xs text-textMuted">
+                      This will permanently remove &quot;{toTitleCase(habit.name)}&quot; and all
+                      associated log history.
                     </Text>
                   </View>
 
-                  <View className="flex-row gap-3 mt-2">
+                  <View className="mt-2 flex-row gap-3">
                     <Pressable
                       onPress={() => setConfirmingDelete(false)}
-                      className="flex-1 bg-background border border-border py-3.5 rounded-xl items-center"
-                    >
-                      <Text className="text-text font-semibold text-sm">Cancel</Text>
+                      className="flex-1 items-center rounded-xl border border-secondary/10 bg-secondary/5 py-3.5">
+                      <Text className="text-sm font-semibold text-secondary">Cancel</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => {
                         onDelete(habit);
                         handleClose();
                       }}
-                      className="flex-1 bg-red-600 py-3.5 rounded-xl items-center"
-                    >
-                      <Text className="text-white font-bold text-sm">Confirm Delete</Text>
+                      className="flex-1 items-center rounded-xl border border-danger/30 bg-danger/5 py-3.5">
+                      <Text className="text-sm font-bold text-danger">Confirm Delete</Text>
                     </Pressable>
                   </View>
                 </View>

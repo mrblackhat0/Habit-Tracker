@@ -29,7 +29,7 @@ export interface FocusStoreState {
   startSession: (habitId: number, mode: FocusMode, targetGoalMs?: number | null, freshStart?: boolean) => boolean;
   pauseSession: () => void;
   resumeSession: () => void;
-  stopSession: () => void;
+  stopSession: (reason?: 'completed') => void;
   cancelSessionWithoutLogging: () => void;
   checkStaleSession: () => void;
   dismissStalePrompt: () => void;
@@ -39,7 +39,9 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
   activeSession: null,
   stalePrompt: null,
 
-  loadActiveSession: () => {
+  loadActiveSession: async () => {
+    const { dbReady } = await import('../db/database');
+    await dbReady;
     try {
       const session = getActiveSession();
       set({ activeSession: session });
@@ -104,7 +106,7 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
     }
   },
 
-  stopSession: () => {
+  stopSession: (reason?: 'completed') => {
     const current = get().activeSession;
     if (!current) return;
 
@@ -118,9 +120,8 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
         if (habit) {
           const todayStr = getTodayDateStr();
           const dailyTotalMs = getDailyTotalMs(habit.id, todayStr);
-          const totalMinsToday = Math.round(dailyTotalMs / 60000);
-          const sessionMins = Math.floor((result.durationMs ?? 0) / 60000);
-          stopSessionNotification(habit.id, habit.name, sessionMins, totalMinsToday);
+          const sessionMs = result.durationMs ?? 0;
+          stopSessionNotification(habit.id, habit.name, sessionMs, dailyTotalMs, reason);
         }
       });
     }
@@ -158,7 +159,7 @@ export const useFocusStore = create<FocusStoreState>((set, get) => ({
       }
       if (currentElapsedMs >= current.targetGoalMs) {
         // Timer completed — automatically resolve and log session
-        get().stopSession();
+        get().stopSession('completed');
         return;
       }
     }

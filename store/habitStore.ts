@@ -18,7 +18,6 @@ import {
 import { syncHabitReminder, cancelHabitReminders } from '../services/notificationService';
 import { seedDailyTotal, resetTodayLoggedMinutes } from '../db/focus';
 
-
 function getTodayDateStr(): string {
   const d = new Date();
   const year = d.getFullYear();
@@ -41,6 +40,7 @@ export interface HabitStoreState {
   clearAll: () => Promise<void>;
   toggleCompletion: (habitId: number, date?: string) => Promise<void>;
   resetCompletion: (habitId: number, date?: string) => Promise<void>;
+  markAsUnComplete: (habitId: number, date?: string) => Promise<void>;
 }
 
 export const useHabitStore = create<HabitStoreState>((set, get) => ({
@@ -49,10 +49,9 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
   archivedHabits: [],
 
   loadHabits: async () => {
-    const [habits, todayHabits] = await Promise.all([
-      getAllHabits(),
-      getTodayHabitsWithLogs(),
-    ]);
+    const { dbReady } = await import('../db/database');
+    await dbReady;
+    const [habits, todayHabits] = await Promise.all([getAllHabits(), getTodayHabitsWithLogs()]);
     set({ habits, todayHabits });
   },
 
@@ -64,7 +63,13 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
   addHabit: async (habitData: CreateHabitInput) => {
     const newHabit = await createHabit(habitData);
     await get().loadHabits();
-    syncHabitReminder(newHabit.id, newHabit.name, newHabit.time, newHabit.occurrence, newHabit.reminder);
+    syncHabitReminder(
+      newHabit.id,
+      newHabit.name,
+      newHabit.time,
+      newHabit.occurrence,
+      newHabit.reminder
+    );
     return newHabit;
   },
 
@@ -104,7 +109,10 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
             [goal, id]
           );
         } else {
-          await db.runAsync(`UPDATE habit_logs SET loggedMinutes = NULL WHERE habitId = ? AND completed = 1`, [id]);
+          await db.runAsync(
+            `UPDATE habit_logs SET loggedMinutes = NULL WHERE habitId = ? AND completed = 1`,
+            [id]
+          );
         }
       } else if (oldType === 'quantity' && newType === 'duration') {
         const goal = habitData.goalMinutes ?? null;
@@ -114,7 +122,10 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
             [goal, id]
           );
         } else {
-          await db.runAsync(`UPDATE habit_logs SET loggedQty = NULL WHERE habitId = ? AND completed = 1`, [id]);
+          await db.runAsync(
+            `UPDATE habit_logs SET loggedQty = NULL WHERE habitId = ? AND completed = 1`,
+            [id]
+          );
         }
       }
     }
@@ -178,7 +189,8 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
         let optimisticLoggedMinutes = h.loggedMinutes ?? 0;
         let optimisticLoggedQty = h.loggedQty ?? 0;
         if (newDone) {
-          if ((h.loggedMinutes ?? 0) === 0 && h.goalMinutes) optimisticLoggedMinutes = h.goalMinutes;
+          if ((h.loggedMinutes ?? 0) === 0 && h.goalMinutes)
+            optimisticLoggedMinutes = h.goalMinutes;
           if ((h.loggedQty ?? 0) === 0 && h.goalQty) optimisticLoggedQty = h.goalQty;
         }
         const next = [...current];
@@ -235,7 +247,13 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
 
       const freshHabit = habits.find((x) => x.id === habitId) ?? habit;
       if (freshHabit) {
-        syncHabitReminder(freshHabit.id, freshHabit.name, freshHabit.time, freshHabit.occurrence, freshHabit.reminder);
+        syncHabitReminder(
+          freshHabit.id,
+          freshHabit.name,
+          freshHabit.time,
+          freshHabit.occurrence,
+          freshHabit.reminder
+        );
       }
     } catch (e) {
       console.warn('toggleCompletion background sync failed:', e);
@@ -277,9 +295,49 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
       const [habits, todayHabits] = await Promise.all([getAllHabits(), getTodayHabitsWithLogs()]);
       set({ habits, todayHabits });
       const habit = habits.find((x) => x.id === habitId);
-      if (habit) syncHabitReminder(habit.id, habit.name, habit.time, habit.occurrence, habit.reminder);
+      if (habit)
+        syncHabitReminder(habit.id, habit.name, habit.time, habit.occurrence, habit.reminder);
     } catch (e) {
       console.warn('resetCompletion failed:', e);
+      try {
+        const [habits, todayHabits] = await Promise.all([getAllHabits(), getTodayHabitsWithLogs()]);
+        set({ habits, todayHabits });
+      } catch {}
+    }
+  },
+
+  markAsUnComplete: async (habitId: number, date?: string) => {
+    const targetDate = date ?? getTodayDateStr();
+    const isToday = targetDate === getTodayDateStr();
+
+    // optimistic: set done false
+    if (isToday) {
+      const current = get().todayHabits;
+      const idx = current.findIndex((h) => h.id === habitId);
+      if (idx !== -1) {
+        const next = [...current];
+        next[idx] = { ...next[idx], done: false };
+        set({ todayHabits: next });
+      }
+    }
+    try {
+      // preserve existing logged values — only flip completed flag
+      const logs = await getLogsForHabit(habitId);
+      const existingLog = logs.find((l) => l.date === targetDate);
+      await logCompletion({
+        habitId,
+        date: targetDate,
+        loggedMinutes: existingLog?.loggedMinutes ?? null,
+        loggedQty: existingLog?.loggedQty ?? null,
+        completed: false,
+      });
+      const [habits, todayHabits] = await Promise.all([getAllHabits(), getTodayHabitsWithLogs()]);
+      set({ habits, todayHabits });
+      const habit = habits.find((x) => x.id === habitId);
+      if (habit)
+        syncHabitReminder(habit.id, habit.name, habit.time, habit.occurrence, habit.reminder);
+    } catch (e) {
+      console.warn('UnCompletion failed:', e);
       try {
         const [habits, todayHabits] = await Promise.all([getAllHabits(), getTodayHabitsWithLogs()]);
         set({ habits, todayHabits });

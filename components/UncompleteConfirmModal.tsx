@@ -9,7 +9,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { DataColors } from '@/constants/Colors';
+import { Colors, DataColors } from '@/constants/Colors';
 import { getIconColor } from '@/constants/Icons';
 import { HabitCardItem } from './HabitCard';
 
@@ -18,6 +18,7 @@ interface UncompleteConfirmModalProps {
   habit: HabitCardItem | null;
   onClose: () => void;
   onConfirm: (habit: HabitCardItem) => void;
+  onReset: (habit: HabitCardItem) => void;
 }
 
 export const UncompleteConfirmModal: React.FC<UncompleteConfirmModalProps> = ({
@@ -25,6 +26,7 @@ export const UncompleteConfirmModal: React.FC<UncompleteConfirmModalProps> = ({
   habit,
   onClose,
   onConfirm,
+  onReset,
 }) => {
   const [isMounted, setIsMounted] = useState(visible);
   const backdropOpacity = useSharedValue(0);
@@ -67,6 +69,13 @@ export const UncompleteConfirmModal: React.FC<UncompleteConfirmModalProps> = ({
     progressText = `${habit.loggedQty ?? 0} / ${habit.goalQty} ${habit.unit || ''}`;
   }
 
+  const isReset =
+    habit.progressType === 'duration'
+      ? (habit.loggedMinutes ?? 0) >= (habit.goalMinutes ?? Infinity)
+      : habit.progressType === 'quantity'
+        ? (habit.loggedQty ?? 0) >= (habit.goalQty ?? Infinity)
+        : false; // check-off type doesn't use this reset logic
+
   return (
     <Modal visible={isMounted} transparent animationType="none" onRequestClose={handleClose}>
       <TouchableWithoutFeedback onPress={handleClose}>
@@ -98,8 +107,7 @@ export const UncompleteConfirmModal: React.FC<UncompleteConfirmModalProps> = ({
                 </View>
               </View>
               <Text className="mb-6 px-2 text-center text-xs leading-5 text-textMuted">
-                This habit is marked as completed. Uncompleting will reset your logged progress to
-                0. Do you want to continue?
+                This habit is marked as completed. Uncompleting will {isReset?'reset your logged progress to 0.':'just mark this habit as pending'}. Do you want to continue?
               </Text>
               <View className="w-full flex-row gap-3">
                 <Pressable
@@ -109,12 +117,14 @@ export const UncompleteConfirmModal: React.FC<UncompleteConfirmModalProps> = ({
                 </Pressable>
                 <Pressable
                   onPress={() => {
-                    onConfirm(habit);
+                    isReset ? onReset(habit) : onConfirm(habit);
                     handleClose();
                   }}
-                  className="flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl border border-danger/30 bg-danger/5 py-3.5 active:opacity-90">
-                  <Ionicons name="refresh" size={18} color="#f43f5e" />
-                  <Text className="text-sm font-bold text-danger">Reset & Uncomplete</Text>
+                  className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl border ${isReset ? 'border-danger/30 bg-danger/5' : 'border-primary/30 bg-primary/5'} py-3.5 active:opacity-90`}>
+                  <Ionicons name="refresh" size={18} color={isReset?'#f43f5e':Colors.primary} />
+                  <Text className={`text-sm font-bold ${isReset ? 'text-danger' : 'text-primary'}`}>
+                    {isReset ? 'Reset & Uncomplete' : 'Mark Uncomplete'}
+                  </Text>
                 </Pressable>
               </View>
             </Animated.View>

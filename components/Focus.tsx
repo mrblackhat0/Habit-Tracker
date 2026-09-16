@@ -1,9 +1,19 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { toTitleCase } from '@/utils/utils';
+import { toTitleCase, formatDuration } from '@/utils/utils';
 import { hapticImpact, hapticNotification } from '@/utils/haptics';
-import { View, Text, Pressable, Modal, AppState, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  Modal,
+  AppState,
+  TouchableWithoutFeedback,
+  Keyboard,
+} from 'react-native';
 import { useFocusEffect, useNavigation, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
+import Animated, { useSharedValue, useAnimatedProps, withTiming } from 'react-native-reanimated';
 import { Colors, DataColors } from '../constants/Colors';
 import { Habit, getLogsForHabit, getHabitById } from '../db/habits';
 import { useFocusStore } from '../store/focusStore';
@@ -16,6 +26,12 @@ import SegmentedToggle from './SegmentedToggle';
 import AnimatedSwitch from './AnimatedSwitch';
 import ResetFocusModal from './ResetFocusModal';
 import ExitFocusModal from './ExitFocusModal';
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const RING_SIZE = 275;
+const RING_STROKE = 10;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 interface FocusProps {
   habit: Habit;
@@ -101,7 +117,7 @@ export default function Focus({ habit }: FocusProps) {
   useFocusEffect(
     useCallback(() => {
       return () => {
-        if ((navigation as any).isFocused?.() === true) return;
+        if ((navigation as any).isTimeFocused?.() === true) return;
         const active = useFocusStore.getState().activeSession;
         if (!active || active.status !== 'running') return;
         const hid = habitIdRef.current;
@@ -125,7 +141,11 @@ export default function Focus({ habit }: FocusProps) {
   const [resetModalVisible, setResetModalVisible] = useState<boolean>(false);
   // Exact typed time override (timer: new remaining, stopwatch: new display base)
   const [editedBaseMs, setEditedBaseMs] = useState<number | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
+  const [isTimeFocused, setIsTimeFocused] = useState(false);
+  const ringProgress = useSharedValue(0);
+  // __DEV__ tick forensics (step 1, temporary): detect non-monotonic countdown
+  const prevRemainingRef = useRef<number | null>(null);
+  const prevSessionKeyRef = useRef<string | null>(null);
 
   const todayStr = useMemo(() => getTodayDateStr(), []);
   const goalMinutes = habit.goalMinutes ?? 60;
@@ -152,10 +172,14 @@ export default function Focus({ habit }: FocusProps) {
   // Keyed on the boolean `isRunning` so it never fires during pause or stop.
   const isRunning = isCurrentHabitActive && activeSession?.status === 'running';
   useEffect(() => {
-    if (!isRunning) return;
+    if (!isRunning) {
+      prevRemainingRef.current = null;
+      prevSessionKeyRef.current = null;
+      return;
+    }
     const interval = setInterval(() => {
       setTick((t) => t + 1);
-    }, 250);
+    }, 1000);
     return () => clearInterval(interval);
   }, [isRunning]);
 
@@ -209,7 +233,26 @@ export default function Focus({ habit }: FocusProps) {
     isUiReset,
     todayLoggedMs,
     editedBaseMs,
+    tick,
   ]);
+
+  // __DEV__ tick forensics (step 1, temporary): detect non-monotonic countdown
+  useEffect(() => {
+    if (!__DEV__ || !isCurrentHabitActive || activeSession?.status !== 'running') return;
+    const key = `${activeSession.startedAt}|${activeSession.accumulatedMs}|${activeSession.targetGoalMs}`;
+    if (prevSessionKeyRef.current !== null && prevSessionKeyRef.current !== key) {
+      console.warn(`[tick-forensics] SESSION FLIP prev=${prevSessionKeyRef.current} now=${key}`);
+    }
+    prevSessionKeyRef.current = key;
+    if (prevRemainingRef.current !== null && remainingMs > prevRemainingRef.current) {
+      console.warn(
+        `[tick-forensics] UP-TICK tick=${tick} now=${Date.now()} ` +
+          `startedAt=${activeSession.startedAt} acc=${activeSession.accumulatedMs} ` +
+          `target=${targetGoalMs} elapsed=${elapsedMs} prev=${prevRemainingRef.current} nowR=${remainingMs}`
+      );
+    }
+    prevRemainingRef.current = remainingMs;
+  }, [remainingMs, isCurrentHabitActive, activeSession, targetGoalMs, elapsedMs, tick]);
 
   // Stopwatch elapsed display
   const stopwatchDisplayMs = useMemo(() => {
@@ -220,14 +263,17 @@ export default function Focus({ habit }: FocusProps) {
     return isUiReset ? 0 : todayLoggedMs;
   }, [isCurrentHabitActive, elapsedMs, isUiReset, todayLoggedMs, editedBaseMs]);
 
-  const handleStopAndLog = useCallback(() => {
-    stopSession();
-    // DB already updated synchronously — refresh optimistically so display
-    // never flashes the pre-session value before async reload completes
-    const fresh = getDailyTotalMs(habit.id, todayStr);
-    setTodayLoggedMs((prev) => Math.max(fresh, prev));
-    setEditedBaseMs(null);
-  }, [stopSession, habit.id, todayStr]);
+  const handleStopAndLog = useCallback(
+    (reason?: 'completed') => {
+      stopSession(reason);
+      // DB already updated synchronously — refresh optimistically so display
+      // never flashes the pre-session value before async reload completes
+      const fresh = getDailyTotalMs(habit.id, todayStr);
+      setTodayLoggedMs((prev) => Math.max(fresh, prev));
+      // setEditedBaseMs(null);
+    },
+    [stopSession, habit.id, todayStr]
+  );
 
   const handleStopAndExit = useCallback(() => {
     handleStopAndLog();
@@ -246,7 +292,7 @@ export default function Focus({ habit }: FocusProps) {
 
     if (elapsedMs >= targetGoalMs) {
       hapticNotification();
-      handleStopAndLog();
+      handleStopAndLog('completed');
     }
   }, [
     isRunning,
@@ -267,6 +313,15 @@ export default function Focus({ habit }: FocusProps) {
     const totalAccumulated = todayLoggedMs + (isCurrentHabitActive ? elapsedMs : 0);
     return Math.min(100, Math.round((totalAccumulated / fullGoalMs) * 100));
   }, [mode, fullGoalMs, isUiReset, isCurrentHabitActive, elapsedMs, targetGoalMs, todayLoggedMs]);
+
+  // Animate ring: 100% = full ring, 0% = empty ring
+  useEffect(() => {
+    ringProgress.value = withTiming(100 - progressPercent, { duration: 500 });
+  }, [progressPercent, ringProgress]);
+
+  const ringAnimatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: RING_CIRCUMFERENCE * ((100 - ringProgress.value) / 100),
+  }));
 
   const handleStart = () => {
     setLockErrorMessage(null);
@@ -310,283 +365,318 @@ export default function Focus({ habit }: FocusProps) {
   // Typed time supersedes reset view — show exact value from here on
   const handleTimeConfirm = (ms: number) => {
     setEditedBaseMs(ms);
-    setIsUiReset(false);
+    setIsUiReset(true);
   };
 
   const currentMode = isCurrentHabitActive ? activeSession!.mode : mode;
 
   return (
-    <TouchableWithoutFeedback onPress={() => { setIsFocused(false); Keyboard.dismiss(); }} accessible={false}>
-      <View className="flex-1 bg-background pb-8 pt-2">
-      {/* Animated Mode Selector */}
-      <View pointerEvents={isFocused ? 'none' : 'auto'} style={{ opacity: isFocused ? 0.5 : 1 }}>
-        <SegmentedToggle
-          fullWidth={false}
-          options={['Timer', 'Stopwatch']}
-          value={currentMode === 'timer' ? 'Timer' : 'Stopwatch'}
-          onChange={(val) => {
-            if (!isCurrentHabitActive) {
-              setMode(val === 'Timer' ? 'timer' : 'stopwatch');
-              setEditedBaseMs(null);
-            }
-          }}
-        />
-      </View>
-
-      {/* Lock Banner if another habit session is active */}
-      {isOtherHabitActive && (
-        <View className="mb-6 flex-row items-center gap-3 rounded-2xl border border-warning/50 bg-surface p-4">
-          <Ionicons name="lock-closed" size={20} color={DataColors.warning} />
-          <View className="flex-1">
-            <Text className="text-sm font-bold text-text">Session Locked</Text>
-            <Text className="mt-0.5 text-xs text-textMuted">
-              &quot;{activeOtherHabit?.name ?? 'Another habit'}&quot; is currently{' '}
-              {activeSession?.status}. Resolve it first.
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {lockErrorMessage && (
-        <View className="mb-4 rounded-2xl border border-danger/50 bg-surface p-3">
-          <Text className="text-center text-xs font-semibold text-danger">{lockErrorMessage}</Text>
-        </View>
-      )}
-
-      {/* Timer / Stopwatch Main Display Card */}
-      <View className="my-4 items-center justify-center rounded-3xl border border-border bg-surface p-8 shadow-sm">
-        {/* Reset Header Row */}
-        <View className="mb-2 w-full flex-row items-center justify-between">
-          <Text className="text-xs font-semibold uppercase tracking-wider text-textMuted">
-            {isCurrentHabitActive
-              ? activeSession?.status === 'running'
-                ? currentMode === 'timer'
-                  ? 'Time Remaining'
-                  : 'Elapsed Time'
-                : currentMode === 'timer'
-                  ? 'Timer Paused'
-                  : 'Stopwatch Paused'
-              : currentMode === 'timer'
-                ? 'Target Goal'
-                : 'Stopwatch Mode'}
-          </Text>
-          <Pressable
-            onPress={() => {
-              if (isFocused) {
-                Keyboard.dismiss();
-                setIsFocused(false);
-                return;
-              }
-              if (isUiReset) {
-                hapticImpact();
-                setIsUiReset(false);
-              } else {
-                setResetModalVisible(true);
+    <TouchableWithoutFeedback
+      onPress={() => {
+        setIsTimeFocused(false);
+        Keyboard.dismiss();
+      }}
+      accessible={false}>
+      <View className="flex-1 bg-background pb-8 pt-4">
+        {/* Animated Mode Selector */}
+        <View
+          pointerEvents={isTimeFocused ? 'none' : 'auto'}
+          style={{ opacity: isTimeFocused ? 0.5 : 1 }}>
+          <SegmentedToggle
+            fullWidth={false}
+            options={['Timer', 'Stopwatch']}
+            value={currentMode === 'timer' ? 'Timer' : 'Stopwatch'}
+            onChange={(val) => {
+              if (!isCurrentHabitActive) {
+                setMode(val === 'Timer' ? 'timer' : 'stopwatch');
+                setEditedBaseMs(null);
               }
             }}
-            disabled={isRunning || isFocused}
-            className={`flex-row items-center gap-1 rounded-xl border border-border bg-background px-2.5 py-1 ${isFocused || isRunning ? 'opacity-40' : 'active:opacity-80'}`}>
-            <Ionicons
-              name={isUiReset ? 'arrow-undo-outline' : 'reload-outline'}
-              size={13}
-              color={Colors.secondary}
-            />
-            <Text className="text-[11px] font-semibold text-textMuted">
-              {isUiReset ? 'Restore' : 'Reset'}
-            </Text>
-          </Pressable>
+          />
         </View>
 
-        {currentMode === 'timer' ? (
-          <>
-            <EditableTimeDisplay
-              valueMs={remainingMs}
-              disabled={isCurrentHabitActive}
-              onConfirm={handleTimeConfirm}
-              ceilDisplay
-              isFocused={isFocused}
-              onFocusedChange={setIsFocused}
-            />
-            <Text className="mb-4 text-xs font-medium text-textMuted">
-              {progressPercent}% of {selectedGoalMins}m goal completed
-              {!isUiReset && todayLoggedMins > 0 ? ` (${todayLoggedMins}m logged today)` : ''}
-            </Text>
-
-            {/* Progress Bar */}
-            <View className="h-2.5 w-full overflow-hidden rounded-full border border-border/60 bg-background">
-              <View
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${progressPercent}%` }}
-              />
+        {/* Lock Banner if another habit session is active */}
+        {isOtherHabitActive && (
+          <View className="mb-6 flex-row items-center gap-3 rounded-2xl border border-warning/50 bg-surface p-4">
+            <Ionicons name="lock-closed" size={20} color={DataColors.warning} />
+            <View className="flex-1">
+              <Text className="text-sm font-bold text-text">Session Locked</Text>
+              <Text className="mt-0.5 text-xs text-textMuted">
+                &quot;{activeOtherHabit?.name ?? 'Another habit'}&quot; is currently{' '}
+                {activeSession?.status}. Resolve it first.
+              </Text>
             </View>
-
-            {/* Goal Presets (when idle) */}
-            {!isCurrentHabitActive && (
-              <View className="mt-6 flex-row gap-2">
-                {timeOptions.map((mins) => (
-                  <Pressable
-                    key={mins}
-                    disabled={isFocused}
-                    onPress={() => {
-                      setSelectedGoalMins(mins);
-                      setEditedBaseMs(null);
-                    }}
-                    className={`rounded-xl border px-3 py-1.5 ${isFocused ? 'opacity-40' : ''} ${
-                      selectedGoalMins === mins
-                        ? 'border-primary bg-primary'
-                        : 'border-border bg-background'
-                    }`}>
-                    <Text
-                      className={`text-xs font-bold ${
-                        selectedGoalMins === mins ? 'text-white' : 'text-textMuted'
-                      }`}>
-                      {mins}m {mins === goalMinutes && '(target)'}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </>
-        ) : (
-          <>
-            <EditableTimeDisplay
-              valueMs={stopwatchDisplayMs}
-              disabled={isCurrentHabitActive}
-              onConfirm={handleTimeConfirm}
-              isFocused={isFocused}
-              onFocusedChange={setIsFocused}
-            />
-            <Text className="mt-1 text-xs font-medium text-textMuted">
-              {!isUiReset && todayLoggedMins > 0
-                ? `Continuing from ${todayLoggedMins}m logged today`
-                : 'Open-ended count-up session'}
-            </Text>
-          </>
+          </View>
         )}
-      </View>
 
-      {/* Control Buttons */}
-      <View className="mt-6 gap-3">
-        {!isCurrentHabitActive ? (
-          <Pressable
-            onPress={handleStart}
-            disabled={isOtherHabitActive || isFocused}
-            className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${
-              isOtherHabitActive || isFocused ? 'bg-surface opacity-50' : 'bg-primary active:opacity-90'
-            }`}>
-            <Ionicons name="play" size={20} color="#FFFFFF" />
-            <Text className="text-base font-bold text-white">Start Focus Session</Text>
-          </Pressable>
-        ) : (
-          <View className="flex-row gap-3">
-            {activeSession?.status === 'running' ? (
-              <Pressable
-                onPress={pauseSession}
-                disabled={isFocused}
-                className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-surface py-4 ${isFocused ? 'opacity-40' : 'active:opacity-80'}`}>
-                <Ionicons name="pause" size={20} color={Colors.text} />
-                <Text className="text-base font-bold text-text">Pause</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={resumeSession}
-                disabled={isFocused}
-                className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-primary py-4 ${isFocused ? 'opacity-40' : 'active:opacity-90'}`}>
-                <Ionicons name="play" size={20} color="#FFFFFF" />
-                <Text className="text-base font-bold text-white">Resume</Text>
-              </Pressable>
-            )}
+        {lockErrorMessage && (
+          <View className="mb-4 rounded-2xl border border-danger/50 bg-surface p-3">
+            <Text className="text-center text-xs font-semibold text-danger">
+              {lockErrorMessage}
+            </Text>
+          </View>
+        )}
 
+        {/* Timer / Stopwatch Main Display Card */}
+        <View className="mb-4 items-center justify-center rounded-3xl border border-border bg-surface p-8 shadow-sm">
+          {/* Reset Header Row */}
+          <View className="mb-2 w-full flex-row items-center justify-between">
+            <Text className="text-xs font-semibold uppercase tracking-wider text-textMuted">
+              {isCurrentHabitActive
+                ? activeSession?.status === 'running'
+                  ? currentMode === 'timer'
+                    ? 'Time Remaining'
+                    : 'Elapsed Time'
+                  : currentMode === 'timer'
+                    ? 'Timer Paused'
+                    : 'Stopwatch Paused'
+                : currentMode === 'timer'
+                  ? 'Target Goal'
+                  : 'Stopwatch Mode'}
+            </Text>
             <Pressable
-              onPress={handleStopAndLog}
-              disabled={isFocused}
-              className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-danger py-4 ${isFocused ? 'opacity-40' : 'active:opacity-90'}`}>
-              <Ionicons name="square" size={18} color="#FFFFFF" />
-              <Text className="text-base font-bold text-white">Stop & Log</Text>
+              onPress={() => {
+                if (isTimeFocused) {
+                  Keyboard.dismiss();
+                  setIsTimeFocused(false);
+                  return;
+                }
+                if (isUiReset) {
+                  hapticImpact();
+                  setIsUiReset(false);
+                  setEditedBaseMs(null);
+                } else {
+                  setResetModalVisible(true);
+                }
+              }}
+              disabled={isRunning || isTimeFocused}
+              className={`flex-row items-center gap-1 rounded-xl border border-border bg-background px-2.5 py-1 ${isTimeFocused || isRunning ? 'opacity-40' : 'active:opacity-80'}`}>
+              <Ionicons
+                name={isUiReset ? 'arrow-undo-outline' : 'reload-outline'}
+                size={13}
+                color={Colors.secondary}
+              />
+              <Text className="text-[11px] font-semibold text-textMuted">
+                {isUiReset ? 'Restore' : 'Reset'}
+              </Text>
             </Pressable>
           </View>
-        )}
-      </View>
 
-      {/* Strict Mode Toggle Row */}
-      <View className="mt-4 flex-row items-center justify-between rounded-2xl border border-border bg-surface p-4 shadow-sm">
-        <View className="flex-1 flex-row items-center gap-3 pr-3">
-          <View
-            className={`h-10 w-10 items-center justify-center rounded-xl ${
-              strictMode ? 'bg-primary/20' : 'bg-background'
-            }`}>
-            <Ionicons
-              name={strictMode ? 'shield-checkmark' : 'shield-outline'}
-              size={20}
-              color={strictMode ? Colors.primary : Colors.secondary}
-            />
-          </View>
-          <View className="flex-1">
-            <Text className="text-sm font-bold text-text">Strict Mode</Text>
-            <Text className="mt-0.5 text-xs text-textMuted">
-              Auto-pause when screen or app is switched
-            </Text>
-          </View>
-        </View>
-        <AnimatedSwitch
-          value={strictMode}
-          disabled={isFocused}
-          onValueChange={(val) => {
-            hapticImpact();
-            setStrictMode(val);
-            updateHabit(habit.id, { strictMode: val });
-          }}
-        />
-      </View>
-
-      {/* Exit Confirmation Modal Prompt (Strict Mode ON) */}
-      <ExitFocusModal
-        visible={exitModalVisible}
-        habitName={toTitleCase(habit.name)}
-        onStay={handleStay}
-        onStopAndExit={handleStopAndExit}
-      />
-
-      {/* Reset Focus Modal Prompt */}
-      <ResetFocusModal
-        visible={resetModalVisible}
-        habitName={toTitleCase(habit.name)}
-        todayLoggedMins={todayLoggedMins}
-        selectedGoalMins={selectedGoalMins}
-        currentMode={currentMode}
-        onClose={() => setResetModalVisible(false)}
-        onResetUi={handleResetUi}
-        onClearDb={handleClearDb}
-      />
-
-      {/* Stale Session Auto-Timeout Modal Prompt */}
-      {stalePrompt && stalePrompt.visible && (
-        <Modal transparent animationType="fade" visible={stalePrompt.visible}>
-          <View className="flex-1 items-center justify-center bg-black/70 px-6">
-            <View className="w-full items-center rounded-3xl border border-border bg-surface p-6">
-              <Ionicons name="time-outline" size={40} color={DataColors.warning} />
-              <Text className="mt-3 text-center text-xl font-bold text-text">Session Paused</Text>
-              <Text className="mt-2 px-2 text-center text-xs leading-5 text-textMuted">
-                &quot;{stalePrompt.habitName}&quot; was paused {stalePrompt.pausedMinsAgo} minutes
-                ago. Would you like to resume or log and stop?
+          {currentMode === 'timer' ? (
+            <>
+              {/* Countdown Ring */}
+              <View className="mt-2 items-center justify-center">
+                <Svg
+                  width={RING_SIZE}
+                  height={RING_SIZE}
+                  style={{ transform: [{ rotate: '-90deg' }] }}>
+                  <Circle
+                    cx={RING_SIZE / 2}
+                    cy={RING_SIZE / 2}
+                    r={RING_RADIUS}
+                    strokeWidth={RING_STROKE}
+                    stroke="rgba(255,255,255,0.08)"
+                    fill="none"
+                  />
+                  <AnimatedCircle
+                    cx={RING_SIZE / 2}
+                    cy={RING_SIZE / 2}
+                    r={RING_RADIUS}
+                    strokeWidth={RING_STROKE}
+                    stroke={Colors.primary}
+                    fill="none"
+                    strokeDasharray={`${RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}`}
+                    strokeLinecap="round"
+                    animatedProps={ringAnimatedProps}
+                  />
+                </Svg>
+                <View className="absolute items-center justify-center">
+                  <EditableTimeDisplay
+                    valueMs={remainingMs}
+                    disabled={isCurrentHabitActive}
+                    onConfirm={handleTimeConfirm}
+                    ceilDisplay
+                    isFocused={isTimeFocused}
+                    onFocusedChange={setIsTimeFocused}
+                  />
+                </View>
+              </View>
+              <Text className="mt-4 text-xs font-medium text-textMuted">
+                {!isUiReset && todayLoggedMs > 0
+                  ? `${formatDuration(todayLoggedMs)} logged today`
+                  : `Target: ${formatDuration(selectedGoalMins * 60 * 1000)} `}
               </Text>
 
-              <View className="mt-6 w-full flex-row gap-3">
+              {/* Goal Presets (when idle) */}
+              {!isCurrentHabitActive && (
+                <View className="mt-6 flex-row gap-2">
+                  {timeOptions.map((mins) => (
+                    <Pressable
+                      key={mins}
+                      disabled={isTimeFocused}
+                      onPress={() => {
+                        setSelectedGoalMins(mins);
+                        setEditedBaseMs(null);
+                      }}
+                      className={`rounded-xl border px-3 py-1.5 ${isTimeFocused ? 'opacity-40' : ''} ${
+                        selectedGoalMins === mins && !editedBaseMs
+                          ? 'border-primary bg-primary'
+                          : 'border-border bg-background'
+                      }`}>
+                      <Text
+                        className={`text-xs font-bold ${
+                          selectedGoalMins === mins && !editedBaseMs
+                            ? 'text-white'
+                            : 'text-textMuted'
+                        }`}>
+                        {mins}m {mins === goalMinutes && '(Goal)'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </>
+          ) : (
+            <>
+              <EditableTimeDisplay
+                valueMs={stopwatchDisplayMs}
+                disabled={isCurrentHabitActive}
+                onConfirm={handleTimeConfirm}
+                isFocused={isTimeFocused}
+                onFocusedChange={setIsTimeFocused}
+              />
+              <Text className="mt-1 text-xs font-medium text-textMuted">
+                {!isUiReset && todayLoggedMs > 0
+                  ? `Continuing from ${formatDuration(todayLoggedMs)} logged today`
+                  : 'Open-ended count-up session'}
+              </Text>
+            </>
+          )}
+        </View>
+
+        {/* Control Buttons */}
+        <View className="mt-6 gap-3">
+          {!isCurrentHabitActive ? (
+            <Pressable
+              onPress={handleStart}
+              disabled={isOtherHabitActive || isTimeFocused}
+              className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 ${
+                isOtherHabitActive || isTimeFocused
+                  ? 'bg-surface opacity-50'
+                  : 'bg-primary active:opacity-90'
+              }`}>
+              <Ionicons name="play" size={20} color="#FFFFFF" />
+              <Text className="text-base font-bold text-white">Start Focus Session</Text>
+            </Pressable>
+          ) : (
+            <View className="flex-row gap-3">
+              {activeSession?.status === 'running' ? (
                 <Pressable
-                  onPress={handleStopAndLog}
-                  className="flex-1 items-center rounded-2xl bg-danger py-3.5">
-                  <Text className="text-sm font-bold text-white">Log & Stop</Text>
+                  onPress={pauseSession}
+                  disabled={isTimeFocused}
+                  className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-border bg-surface py-4 ${isTimeFocused ? 'opacity-40' : 'active:opacity-80'}`}>
+                  <Ionicons name="pause" size={20} color={Colors.text} />
+                  <Text className="text-base font-bold text-text">Pause</Text>
                 </Pressable>
+              ) : (
                 <Pressable
                   onPress={resumeSession}
-                  className="flex-1 items-center rounded-2xl bg-primary py-3.5">
-                  <Text className="text-sm font-bold text-white">Resume</Text>
+                  disabled={isTimeFocused}
+                  className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-primary py-4 ${isTimeFocused ? 'opacity-40' : 'active:opacity-90'}`}>
+                  <Ionicons name="play" size={20} color="#FFFFFF" />
+                  <Text className="text-base font-bold text-white">Resume</Text>
                 </Pressable>
-              </View>
+              )}
+
+              <Pressable
+                onPress={() => handleStopAndLog()}
+                disabled={isTimeFocused}
+                className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-danger py-4 ${isTimeFocused ? 'opacity-40' : 'active:opacity-90'}`}>
+                <Ionicons name="square" size={18} color="#FFFFFF" />
+                <Text className="text-base font-bold text-white">Stop & Log</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        {/* Strict Mode Toggle Row */}
+        <View className="mt-4 flex-row items-center justify-between rounded-2xl border border-border bg-surface p-4 shadow-sm">
+          <View className="flex-1 flex-row items-center gap-3 pr-3">
+            <View
+              className={`h-10 w-10 items-center justify-center rounded-xl ${
+                strictMode ? 'bg-primary/20' : 'bg-background'
+              }`}>
+              <Ionicons
+                name={strictMode ? 'shield-checkmark' : 'shield-outline'}
+                size={20}
+                color={strictMode ? Colors.primary : Colors.secondary}
+              />
+            </View>
+            <View className="flex-1">
+              <Text className="text-sm font-bold text-text">Strict Mode</Text>
+              <Text className="mt-0.5 text-xs text-textMuted">
+                Auto-pause when screen or app is switched
+              </Text>
             </View>
           </View>
-        </Modal>
-      )}
+          <AnimatedSwitch
+            value={strictMode}
+            disabled={isTimeFocused}
+            onValueChange={(val) => {
+              hapticImpact();
+              setStrictMode(val);
+              updateHabit(habit.id, { strictMode: val });
+            }}
+          />
+        </View>
+
+        {/* Exit Confirmation Modal Prompt (Strict Mode ON) */}
+        <ExitFocusModal
+          visible={exitModalVisible}
+          habitName={toTitleCase(habit.name)}
+          onStay={handleStay}
+          onStopAndExit={handleStopAndExit}
+        />
+
+        {/* Reset Focus Modal Prompt */}
+        <ResetFocusModal
+          visible={resetModalVisible}
+          habitName={toTitleCase(habit.name)}
+          todayLoggedMs={todayLoggedMs}
+          currentMode={currentMode}
+          onClose={() => setResetModalVisible(false)}
+          onResetUi={handleResetUi}
+          onClearDb={handleClearDb}
+        />
+
+        {/* Stale Session Auto-Timeout Modal Prompt */}
+        {stalePrompt && stalePrompt.visible && (
+          <Modal transparent animationType="fade" visible={stalePrompt.visible}>
+            <View className="flex-1 items-center justify-center bg-black/70 px-6">
+              <View className="w-full items-center rounded-3xl border border-border bg-surface p-6">
+                <Ionicons name="time-outline" size={40} color={DataColors.warning} />
+                <Text className="mt-3 text-center text-xl font-bold text-text">Session Paused</Text>
+                <Text className="mt-2 px-2 text-center text-xs leading-5 text-textMuted">
+                  &quot;{stalePrompt.habitName}&quot; was paused {stalePrompt.pausedMinsAgo} minutes
+                  ago. Would you like to resume or log and stop?
+                </Text>
+
+                <View className="mt-6 w-full flex-row gap-3">
+                  <Pressable
+                    onPress={() => handleStopAndLog()}
+                    className="flex-1 items-center rounded-2xl bg-danger py-3.5">
+                    <Text className="text-sm font-bold text-white">Log & Stop</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={resumeSession}
+                    className="flex-1 items-center rounded-2xl bg-primary py-3.5">
+                    <Text className="text-sm font-bold text-white">Resume</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
       </View>
     </TouchableWithoutFeedback>
   );

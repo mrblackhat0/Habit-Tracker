@@ -88,6 +88,7 @@ export const HabitCard: React.FC<HabitCardProps> = React.memo(
             <View className="flex-1">
               <View className="mt-1 flex-row flex-wrap items-center gap-x-2 gap-y-1">
                 <Text
+                  numberOfLines={1}
                   className={`text-base font-semibold ${
                     done ? 'text-secondary line-through' : 'text-text'
                   }`}>
@@ -117,8 +118,10 @@ export const HabitCard: React.FC<HabitCardProps> = React.memo(
                   </View>
                 )}
                 {progressType !== 'check' && (
-                  <View className="flex-row items-center">
-                    <Text className="text-xs font-medium text-secondary">{progressText}</Text>
+                  <View className="max-w-[30%] flex-row items-center">
+                    <Text numberOfLines={1} className="text-xs font-medium text-secondary">
+                      {progressText}
+                    </Text>
                   </View>
                 )}
 
@@ -140,10 +143,13 @@ export const HabitCard: React.FC<HabitCardProps> = React.memo(
               e.stopPropagation?.();
               // skip haptic here if parent will show any modal — let parent handle Heavy/Medium
               const isDurationIncomplete =
-                progressType === 'duration' && goalMinutes != null && (loggedMinutes ?? 0) < (goalMinutes ?? 0);
+                progressType === 'duration' &&
+                goalMinutes != null &&
+                (loggedMinutes ?? 0) < (goalMinutes ?? 0);
               const isQuantityIncomplete =
                 progressType === 'quantity' && goalQty != null && (loggedQty ?? 0) < (goalQty ?? 0);
-              const willShowIncompleteModal = !done && (isDurationIncomplete || isQuantityIncomplete);
+              const willShowIncompleteModal =
+                !done && (isDurationIncomplete || isQuantityIncomplete);
               const willShowUncompleteModal = !!done && progressType !== 'check';
               const willShowModal = willShowIncompleteModal || willShowUncompleteModal;
               if (!willShowModal) {
@@ -164,6 +170,5 @@ export const HabitCard: React.FC<HabitCardProps> = React.memo(
     );
   }
 );
-
 
 export default HabitCard;

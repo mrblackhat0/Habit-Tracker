@@ -10,13 +10,13 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { hapticImpact, hapticNotification } from '@/utils/haptics';
+import { formatDuration } from '@/utils/utils';
 import { Colors, DataColors } from '../constants/Colors';
 
 interface ResetFocusModalProps {
   visible: boolean;
   habitName: string;
-  todayLoggedMins: number;
-  selectedGoalMins: number;
+  todayLoggedMs: number;
   currentMode: 'timer' | 'stopwatch';
   onClose: () => void;
   onResetUi: () => void;
@@ -26,7 +26,7 @@ interface ResetFocusModalProps {
 export default function ResetFocusModal({
   visible,
   habitName,
-  todayLoggedMins,
+  todayLoggedMs,
   currentMode,
   onClose,
   onResetUi,
@@ -87,7 +87,7 @@ export default function ResetFocusModal({
                 <Ionicons name="refresh-circle-outline" size={40} color={DataColors.info} />
                 <Text className="mt-2 text-xl font-bold text-text">Reset Session Options</Text>
                 <Text className="mt-0.5 text-xs text-textMuted">
-                  &quot;{habitName}&quot; • {todayLoggedMins}m logged today
+                  &quot;{habitName}&quot; • {formatDuration(todayLoggedMs)} logged today
                 </Text>
               </View>
 
@@ -109,7 +109,7 @@ export default function ResetFocusModal({
                       Reset {currentMode === 'timer' ? 'Timer' : 'Stopwatch'}
                     </Text>
                     <Text className="text-xs leading-4 text-textMuted">
-                      Restarts from the beginning — your {todayLoggedMins}m history stays saved.
+                      Restarts from the beginning — your {formatDuration(todayLoggedMs)} history stays saved.
                     </Text>
                   </View>
                 </Pressable>
@@ -128,7 +128,7 @@ export default function ResetFocusModal({
                   <View className="">
                     <Text className="text-base font-bold text-danger">Reset Logged Minutes</Text>
                     <Text className="text-xs leading-4 text-textMuted">
-                      Wipes today&apos;s {todayLoggedMins}m from your history and restarts fresh.
+                      Wipes today&apos;s {formatDuration(todayLoggedMs)} from your history and restarts fresh.
                     </Text>
                   </View>
                 </Pressable>

@@ -31,9 +31,9 @@ npx expo export -p android --no-bytecode  # production bundle check
 - `extends: expo/tsconfig.base`, `strict: true`. Includes `.expo/types`, `expo-env.d.ts`, `nativewind-env.d.ts`.
 
 ## Routing & Structure
-- `app/(tabs)/` — Today (`index.tsx`), Analytics, Calendar, Settings. `app/habit/[id].tsx` + `app/habit/[id]/goal.tsx`, `app/addHabit.tsx`, `app/onboarding.tsx`.
-- `db/` — `schema.ts` (`initDb`), `habits.ts`, `focus.ts` (active_session singleton, daily_totals). `store/` — `habitStore.ts`, `focusStore.ts`, `store.ts` (onboarding hydration). `services/` — `notificationService.ts`, `notifeeBackground.js` (must stay imported in `_layout.tsx` before use).
-- `components/` — 25+ UI components (FlashList, Reanimated, SVG rings).
+- `app/(tabs)/` — Today (`index.tsx`), Analytics, Calendar, Settings. `app/habit/[id].tsx` + `app/habit/[id]/goal.tsx`, `app/addHabit.tsx`, `app/onboarding.tsx`, `app/archived.tsx`.
+- `db/` — `schema.ts` (`initDb`), `habits.ts`, `focus.ts` (active_session singleton, daily_totals). `store/` — `habitStore.ts`, `focusStore.ts`, `store.ts` (onboarding hydration). `services/` — `notificationService.ts`, `notifeeBackground.js` (must stay imported in `_layout.tsx` before use), `weeklyOverview.ts`.
+- `components/` — 29 UI components (FlashList, Reanimated, SVG rings).
 - `plugins/with-notification-icon.js` — `withDangerousMod` copies `assets/notification-icon/android/mipmap-*/ic_notification.png` → `android/app/src/main/res/{mipmap,drawable}-*/`. Requires prebuild to take effect.
 
 ## Styling
@@ -47,6 +47,7 @@ npx expo export -p android --no-bytecode  # production bundle check
 
 ## Database
 - WAL mode, FKs on. Tables: `habits`, `habit_logs` (UNIQUE habitId+date), `daily_totals`, `active_session` (id=1 singleton, mode timer/stopwatch, status running/paused), `app_settings`. ALTER TABLE migrations use try/catch — don't replace with unconditional DDL.
+- Schema columns added via migrations: `reminder`, `strictMode`, `archived` on `habits`. If you add a new column, follow the same try/catch `ALTER TABLE` pattern in `db/schema.ts`.
 - `app.json` plugin `expo-sqlite` required.
 
 ## Notifications & Permissions (`app.json:57-68`)
@@ -59,3 +60,4 @@ npx expo export -p android --no-bytecode  # production bundle check
 ## Conventions
 - ESLint: `eslint-config-expo/flat`, ignores `dist/*`, disables `react-hooks/immutability|set-state-in-effect|purity`.
 - No `opencode.json`, no CI workflows, no pre-commit hooks. No `.cursor`/`.github` instruction files to reconcile.
+- **Notification sync rule**: Any code that inserts/updates habits via raw SQL (bypassing `habitStore.addHabit`/`updateHabit`) must also call `syncHabitReminder()` from `notificationService.ts` for habits with `reminder: true` and a non-null `time`. The import flow (`settings.tsx`) is the primary example.

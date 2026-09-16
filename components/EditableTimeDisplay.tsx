@@ -11,6 +11,7 @@ interface Props {
   ceilDisplay?: boolean;
   isFocused?: boolean;
   onFocusedChange?: (focused: boolean) => void;
+  // Use smaller text/narrower segments to fit inside a constrained container
 }
 
 type Seg = 'h' | 'm' | 's';
@@ -53,7 +54,6 @@ export default function EditableTimeDisplay({
   }, [isFocused, active]);
 
   const segs = split(ceilDisplay ? Math.ceil(valueMs / 1000) * 1000 : valueMs);
-  const showH = segs.h > 0 || active === 'h' || (worked.current?.h ?? 0) > 0;
 
   const close = useCallback(() => {
     worked.current = null;
@@ -116,7 +116,7 @@ export default function EditableTimeDisplay({
       // If the platform appends instead of replacing ("05" + "3" → "053"),
       // keep only the last typed digit so one keystroke can't auto-commit/advance.
       const digits = raw.length > 2 ? raw.slice(-1) : raw.slice(0, 2);
-      setDraft(digits);
+      setDraft(raw);
       if (digits.length === 2) {
         commit(seg, digits);
         advanceFrom(seg);
@@ -125,17 +125,14 @@ export default function EditableTimeDisplay({
     [commit, advanceFrom]
   );
 
-  const blurSeg = useCallback(
-    (seg: Seg) => {
-      if (advancing.current) {
-        advancing.current = false;
-        return;
-      }
-      if (draft !== '' && !alreadyCommitted(seg, draft)) commit(seg, draft);
-      close();
-    },
-    [draft, commit, close, alreadyCommitted]
-  );
+  const blurSeg = useCallback(() => {
+    if (advancing.current) {
+      advancing.current = false;
+      return;
+    }
+    // if (draft !== '' && !alreadyCommitted(seg, draft)) commit(seg, draft);
+    close();
+  }, [draft, commit, close, alreadyCommitted]);
 
   const submitSeg = useCallback(
     (seg: Seg) => {
@@ -154,25 +151,25 @@ export default function EditableTimeDisplay({
 
   return (
     <View className="my-2 flex-row items-center justify-center">
-      {showH && (
-        <>
-          <TimeSeg
-            ref={hRef}
-            {...segProps('h')}
-            disabled={disabled}
-            returnKey="next"
-            onFocus={() => focusSeg('h')}
-            onChangeText={(t) => changeSeg('h', t)}
-            onBlur={() => blurSeg('h')}
-            onSubmit={() => submitSeg('h')}
-          />
-          <Text
-            className="text-center text-5xl font-black tracking-tight text-text"
-            style={{ width: 20, lineHeight: 64 }}>
-            :
-          </Text>
-        </>
-      )}
+      {/* {showH && ( */}
+      {/*   <> */}
+      <TimeSeg
+        ref={hRef}
+        {...segProps('h')}
+        disabled={disabled}
+        returnKey="next"
+        onFocus={() => focusSeg('h')}
+        onChangeText={(t) => changeSeg('h', t)}
+        onBlur={() => blurSeg()}
+        onSubmit={() => submitSeg('h')}
+      />
+      <Text
+        className={`text-center text-4xl font-black tracking-tight text-text `}
+        style={{ width: 14, lineHeight: 64 }}>
+        :
+      </Text>
+      {/*   </> */}
+      {/* )} */}
       <TimeSeg
         ref={mRef}
         {...segProps('m')}
@@ -180,12 +177,12 @@ export default function EditableTimeDisplay({
         returnKey="next"
         onFocus={() => focusSeg('m')}
         onChangeText={(t) => changeSeg('m', t)}
-        onBlur={() => blurSeg('m')}
+        onBlur={() => blurSeg()}
         onSubmit={() => submitSeg('m')}
       />
       <Text
-        className="text-center text-5xl font-black tracking-tight text-text"
-        style={{ width: 20, lineHeight: 64 }}>
+        className={`text-center text-4xl font-black tracking-tight text-text `}
+        style={{ width: 14, lineHeight: 64 }}>
         :
       </Text>
       <TimeSeg
@@ -195,7 +192,7 @@ export default function EditableTimeDisplay({
         returnKey="done"
         onFocus={() => focusSeg('s')}
         onChangeText={(t) => changeSeg('s', t)}
-        onBlur={() => blurSeg('s')}
+        onBlur={() => blurSeg()}
         onSubmit={() => submitSeg('s')}
       />
     </View>
@@ -238,19 +235,10 @@ const TimeSeg = React.forwardRef<
       allowFontScaling={false}
       textContentType="none"
       contextMenuHidden
-      className={`rounded-xl px-1 text-center text-5xl font-black tabular-nums ${
-        editing ? 'bg-primary/20' : ''
-      }`}
+      className={`${editing ? 'bg-primary/20' : 'bg-transparent'} overflow-hidden rounded-xl text-center text-5xl font-black tabular-nums text-text `}
       style={{
-        color: Colors.text,
-        width: 72,
-        height: 68,
-        textAlign: 'center',
-        textAlignVertical: 'center',
-        paddingHorizontal: 0,
-        paddingVertical: 0,
-        includeFontPadding: false,
-        fontVariant: ['tabular-nums'],
+        width: 68,
+        height: 64,
       }}
     />
   );

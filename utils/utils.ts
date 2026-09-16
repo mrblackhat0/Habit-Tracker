@@ -14,6 +14,14 @@ export const formatTime = (date?: string) => {
   return `${hh}:${mm} ${ampm}`;
 };
 
+export function formatDuration(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  if (mins > 0) return `${mins}m`;
+  return `${secs}s`;
+}
+
 const SMALL_WORDS = new Set([
   'a',
   'an',

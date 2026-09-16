@@ -8,6 +8,7 @@ import { ActiveSession, seedDailyTotal } from '@/db/focus';
 import { Habit, getLogsForHabit, getHabitById, logCompletion, db } from '@/db/habits';
 import { Colors } from '@/constants/Colors';
 import { getTodayDateStr } from '@/utils/dates';
+import { formatDuration } from '@/utils/utils';
 import { useStore } from '@/store/store';
 
 function isFocusNotificationsEnabled(): boolean {
@@ -19,10 +20,9 @@ function isFocusNotificationsEnabled(): boolean {
   } catch {}
   // Headless/background: store not hydrated, check persisted DB value
   try {
-    const row = (db as any).getFirstSync?.(
-      `SELECT value FROM app_settings WHERE key = ?`,
-      ['focusNotificationsEnabled']
-    );
+    const row = (db as any).getFirstSync?.(`SELECT value FROM app_settings WHERE key = ?`, [
+      'focusNotificationsEnabled',
+    ]);
     if (row) return row.value === '1';
   } catch {}
   try {
@@ -45,9 +45,14 @@ async function safeDisplayNotification(payload: any) {
     console.warn('[notifee] display failed', payload.id, msg);
     if (msg.includes('small icon') || msg.includes('Invalid notification')) {
       try {
-        await notifee.displayNotification({ ...payload, android: { ...payload.android, smallIcon: 'ic_launcher' } });
+        await notifee.displayNotification({
+          ...payload,
+          android: { ...payload.android, smallIcon: 'ic_launcher' },
+        });
         return;
-      } catch (e2) { console.warn('[notifee] fallback failed', e2); }
+      } catch (e2) {
+        console.warn('[notifee] fallback failed', e2);
+      }
     }
     throw e;
   }
@@ -83,11 +88,19 @@ function getNotificationId(habitId: number, dateStr?: string): string {
   return `focus_habit_${habitId}_${d}`;
 }
 
-export async function updateSessionNotification(session: ActiveSession, habit: Habit, freshStart?: boolean) {
+export async function updateSessionNotification(
+  session: ActiveSession,
+  habit: Habit,
+  freshStart?: boolean
+) {
   const notificationId = getNotificationId(habit.id);
   if (!isFocusNotificationsEnabled()) {
-    try { await notifee.cancelNotification(notificationId); } catch {}
-    try { await (notifee as any).stopForegroundService?.(); } catch {}
+    try {
+      await notifee.cancelNotification(notificationId);
+    } catch {}
+    try {
+      await (notifee as any).stopForegroundService?.();
+    } catch {}
     return;
   }
   try {
@@ -123,7 +136,7 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
         // ceil to match in-app countdown (system chronometer truncates)
         timestamp = now + Math.ceil(remainingMs / 1000) * 1000;
       } else {
-      const totalElapsedMs = (freshStart ? 0 : previousLoggedMs) + currentElapsedMs;
+        const totalElapsedMs = (freshStart ? 0 : previousLoggedMs) + currentElapsedMs;
         timestamp = now - totalElapsedMs;
       }
 
@@ -158,13 +171,10 @@ export async function updateSessionNotification(session: ActiveSession, habit: H
     } else {
       const totalElapsedMs = (freshStart ? 0 : previousLoggedMs) + currentElapsedMs;
 
-      let body = `Paused — ${Math.floor(totalElapsedMs / 60000)}m elapsed`;
+      let body = `Paused — ${formatDuration(totalElapsedMs)} elapsed`;
       if (session.mode === 'timer' && sessionTargetMs > 0) {
         const remainingMs = Math.max(0, sessionTargetMs - currentElapsedMs);
-        const remainingMins = Math.ceil(remainingMs / 60000);
-        const sessionTargetMins = Math.round(sessionTargetMs / 60000);
-        const label = isExtraSession ? 'extra' : 'goal';
-        body = `Paused — ${remainingMins}m left of ${sessionTargetMins}m ${label}`;
+        body = `Paused — ${formatDuration(remainingMs)} left of ${formatDuration(sessionTargetMs)} `;
       }
 
       await safeDisplayNotification({
@@ -215,25 +225,33 @@ export async function scheduleTimerCompletion(habit: Habit, session: ActiveSessi
     // Compute final mins for trigger body so it matches stop & log (single notification)
     const { getDailyTotalMs: getTotal } = require('../db/focus');
     let dbTotal = 0;
-    try { dbTotal = getTotal(habit.id, todayStr); } catch {}
+    try {
+      dbTotal = getTotal(habit.id, todayStr);
+    } catch {}
     let logMinsMs = 0;
     try {
       const logs = await getLogsForHabit(habit.id);
-      const t = logs.find((l:any) => l.date === todayStr);
+      const t = logs.find((l: any) => l.date === todayStr);
       logMinsMs = Math.round((t?.loggedMinutes ?? 0) * 60) * 1000;
     } catch {}
     const previous = Math.max(dbTotal, logMinsMs);
-    const sessionMins = Math.max(1, Math.round(remaining / 60000));
     // total after completion: previous + remaining (freshStart already baked into target)
-    const totalMins = Math.round((previous + remaining) / 60000);
+    const totalMs = previous + remaining;
     // Delay 1s so foreground has chance to cancel and show its own (avoid double fire)
-    const trigger: TimestampTrigger = { type: TriggerType.TIMESTAMP, timestamp: now + remaining + 1000 };
+    const trigger: TimestampTrigger = {
+      type: TriggerType.TIMESTAMP,
+      timestamp: now + remaining + 1000,
+    };
     await notifee.createTriggerNotification(
       {
         id: notifId,
         title: habit.name,
-        body: `logged now: ${sessionMins}m ✓ • logged today: ${totalMins}m ✓`,
-        data: { habitId: String(habit.id), type: 'timer_complete', targetMs: String(session.targetGoalMs) },
+        body: `Time's up! ${formatDuration(remaining)} ✓ • today: ${formatDuration(totalMs)}`,
+        data: {
+          habitId: String(habit.id),
+          type: 'timer_complete',
+          targetMs: String(session.targetGoalMs),
+        },
         android: {
           channelId: TIMER_CHANNEL_ID,
           smallIcon: 'ic_launcher',
@@ -264,14 +282,17 @@ export async function cancelTimerCompletion(habitId: number) {
     const notifId = `focus_habit_${habitId}_${todayStr}`;
     await notifee.cancelNotification(notifId).catch(() => {});
   } catch {}
-  try { await notifee.cancelNotification(`timer_complete_${habitId}`); } catch {}
+  try {
+    await notifee.cancelNotification(`timer_complete_${habitId}`);
+  } catch {}
 }
 
 export async function stopSessionNotification(
   habitId: number,
   habitName: string,
-  sessionMins: number,
-  totalMinsToday: number
+  sessionMs: number,
+  totalMsToday: number,
+  reason?: 'completed'
 ) {
   try {
     await initNotificationChannels();
@@ -284,10 +305,16 @@ export async function stopSessionNotification(
       return;
     }
 
+    const body =
+      reason === 'completed'
+        ? `Time's up! ${formatDuration(sessionMs)} ✓ • today: ${formatDuration(totalMsToday)}`
+        : `logged now: ${formatDuration(sessionMs)} ✓ • logged today: ${formatDuration(totalMsToday)} ✓`;
+
     await safeDisplayNotification({
       id: notificationId,
       title: habitName,
-      body: `logged now: ${sessionMins}m ✓ • logged today: ${totalMinsToday}m ✓`,
+      body,
+      data: { habitId: String(habitId) },
       android: {
         channelId: TIMER_CHANNEL_ID,
         ongoing: false,
@@ -309,7 +336,6 @@ export async function stopSessionNotification(
    ========================================== */
 
 const REMINDER_CHANNEL_ID = 'habit_reminders_channel';
-const ALARM_CHANNEL_ID = 'habit_alarm_channel';
 const WEEKLY_CHANNEL_ID = 'weekly_overview_channel';
 const WEEKLY_ID = 'weekly-overview-sunday-7am';
 const DAY_MAP: Record<string, number> = {
@@ -332,30 +358,11 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
-function isAlarmEnabled(): boolean {
-  try {
-    const s = require('@/store/store').useStore.getState();
-    if (s._hydrated) return s.alarmEnabled === true;
-    if (s.alarmEnabled === true) return true;
-  } catch {}
-  try {
-    const row = (db as any).getFirstSync?.(`SELECT value FROM app_settings WHERE key = ?`, ['alarmEnabled']);
-    if (row) return row.value === '1';
-  } catch {}
-  return false;
-}
-
 export async function initReminderChannel() {
   try {
     await notifee.createChannel({
       id: REMINDER_CHANNEL_ID,
       name: 'Habit Reminders',
-      importance: AndroidImportance.HIGH,
-      sound: 'default',
-    });
-    await notifee.createChannel({
-      id: ALARM_CHANNEL_ID,
-      name: 'Habit Alarm',
       importance: AndroidImportance.HIGH,
       sound: 'default',
     });
@@ -408,11 +415,6 @@ function getReminderActions(habit: Habit) {
     actions.push({
       title: 'Start',
       pressAction: { id: 'start_timer' },
-    });
-  } else if (habit.progressType === 'quantity') {
-    actions.push({
-      title: '+1',
-      pressAction: { id: 'plus_one' },
     });
   }
 
@@ -477,7 +479,9 @@ export async function syncHabitReminder(
     const settings: any = await notifee.getNotificationSettings();
     if (settings?.android?.alarm === 0) {
       console.warn('[notifee] exact alarm denied - triggers will not fire when app closed');
-      try { await (notifee as any).openAlarmPermissionSettings?.(); } catch {}
+      try {
+        await (notifee as any).openAlarmPermissionSettings?.();
+      } catch {}
     }
   } catch {}
   const habit = await getHabitById(habitId);
@@ -512,15 +516,13 @@ export async function syncHabitReminder(
     };
 
     try {
-      const useAlarm = isAlarmEnabled();
       await notifee.createTriggerNotification(
         {
           id: `habit_reminder_${habitId}_day_${dayOfWeek}`,
           title: `Reminder: ${habitName}`,
-          subtitle: useAlarm ? 'Alarm • tap to act' : undefined,
           data: { habitId: String(habitId) },
           android: {
-            channelId: useAlarm ? ALARM_CHANNEL_ID : REMINDER_CHANNEL_ID,
+            channelId: REMINDER_CHANNEL_ID,
             smallIcon: 'ic_launcher',
             color: Colors.primary,
             showTimestamp: true,
@@ -528,7 +530,6 @@ export async function syncHabitReminder(
               id: 'default',
             },
             actions,
-            ...(useAlarm ? { fullScreenAction: { id: 'default' } as any, category: 'alarm' as any } : {}),
           },
         },
         trigger
@@ -634,16 +635,20 @@ export async function handleRescheduleAction(
     }
 
     if (notificationId) {
-      try { await notifee.cancelNotification(notificationId); } catch {}
+      try {
+        await notifee.cancelNotification(notificationId);
+      } catch {}
     }
 
     await initReminderChannel();
 
     // ponytail: when app is closed (headless), DB may be locked — fallback to generic actions/title
-    const actions = habit ? getReminderActions(habit) : [
-      { title: 'Mark Completed', pressAction: { id: 'mark_completed' } },
-      { title: 'Reschedule', pressAction: { id: 'reschedule' } },
-    ];
+    const actions = habit
+      ? getReminderActions(habit)
+      : [
+          { title: 'Mark Completed', pressAction: { id: 'mark_completed' } },
+          { title: 'Reschedule', pressAction: { id: 'reschedule' } },
+        ];
     const titleName = habit?.name ?? fallbackTitle ?? 'Habit';
     const snoozeTime = Date.now() + snoozeMinutes * 60 * 1000;
     const trigger: TimestampTrigger = {
@@ -651,15 +656,13 @@ export async function handleRescheduleAction(
       timestamp: snoozeTime,
     };
 
-    const useAlarmReschedule = isAlarmEnabled();
     await notifee.createTriggerNotification(
       {
         id: `habit_reminder_${habitId}_rescheduled_${snoozeTime}`,
         title: `Reminder: ${titleName}`,
-        subtitle: useAlarmReschedule ? 'Alarm • snoozed' : undefined,
         data: { habitId: String(habitId) },
         android: {
-          channelId: useAlarmReschedule ? ALARM_CHANNEL_ID : REMINDER_CHANNEL_ID,
+          channelId: REMINDER_CHANNEL_ID,
           smallIcon: 'ic_launcher',
           color: Colors.primary,
           showTimestamp: true,
@@ -667,7 +670,6 @@ export async function handleRescheduleAction(
             id: 'default',
           },
           actions,
-          ...(useAlarmReschedule ? { fullScreenAction: { id: 'default' } as any, category: 'alarm' as any } : {}),
         },
       },
       trigger

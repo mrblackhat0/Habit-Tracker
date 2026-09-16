@@ -11,9 +11,7 @@ import {
   updateSessionNotification,
   stopSessionNotification,
   handleMarkCompletedAction,
-  handleRescheduleAction,
   handleStartTimerAction,
-  handlePlusOneAction,
 } from '../services/notificationService';
 import { router } from 'expo-router';
 
@@ -25,9 +23,17 @@ function getTodayDateStr() {
 notifee.registerForegroundService(() => new Promise(() => {}));
 
 notifee.onBackgroundEvent(async ({ type, detail }) => {
+  // Gate on DB readiness — headless context may re-evaluate modules.
+  try {
+    const { dbReady } = require('@/db/database');
+    await dbReady;
+  } catch {}
   // Background timer completion — fires even if app is closed
   // Trigger already displayed the final notification (same id as stop), just ensure DB is completed
-  if (type === EventType.TRIGGER_NOTIFICATION_CREATED && detail.notification?.data?.type === 'timer_complete') {
+  if (
+    type === EventType.TRIGGER_NOTIFICATION_CREATED &&
+    detail.notification?.data?.type === 'timer_complete'
+  ) {
     try {
       const session = getActiveSession();
       if (!session || session.mode !== 'timer' || !session.targetGoalMs) return;
@@ -37,7 +43,9 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
       // DB only — trigger's notification is already the final one (same id as stop), don't show duplicate
       resolveActiveSession();
       // Ensure trigger is cleaned up (already delivered)
-      try { await notifee.cancelTriggerNotification(detail.notification.id); } catch {}
+      try {
+        await notifee.cancelTriggerNotification(detail.notification.id);
+      } catch {}
     } catch (e) {
       console.warn('[timer_complete background]', e);
     }
@@ -49,8 +57,12 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
       try {
         const habit = await getHabitById(Number(habitId));
         if (habit && habit.progressType !== 'check') {
-          router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
-          setTimeout(() => router.navigate({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } }), 80);
+          // router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
+          setTimeout(
+            () =>
+              router.navigate({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } }),
+            80
+          );
         } else {
           router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
         }
@@ -83,9 +95,8 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
         if (habit) {
           const todayStr = getTodayDateStr();
           const dailyTotalMs = getDailyTotalMs(result.habitId, todayStr);
-          const totalMinsToday = Math.max(1, Math.round(dailyTotalMs / 60000));
-          const sessionMins = Math.floor((result.durationMs ?? 0) / 60000);
-          await stopSessionNotification(habit.id, habit.name, sessionMins, totalMinsToday);
+          const sessionMs = result.durationMs ?? 0;
+          await stopSessionNotification(habit.id, habit.name, sessionMs, dailyTotalMs);
         } else {
           await notifee.stopForegroundService();
         }
@@ -98,20 +109,23 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
         await handleMarkCompletedAction(parseInt(habitId, 10), detail.notification?.id);
       }
     } else if (actionId === 'reschedule') {
+      // Cancel so there's no stale notification, then navigate to details
+      // screen with reschedule param — same as foreground handler in _layout.tsx
       const habitId = detail.notification?.data?.habitId;
+      const notificationId = detail.notification?.id;
+      if (notificationId) {
+        notifee.cancelNotification(notificationId).catch(() => {});
+      }
       if (habitId) {
-        const fallbackTitle = (detail.notification?.title ?? '').replace(/^Reminder:\s*/, '') || undefined;
-        await handleRescheduleAction(parseInt(habitId, 10), detail.notification?.id, 15, fallbackTitle);
+        setTimeout(
+          () => router.navigate({ pathname: '/habit/[id]', params: { id: habitId, reschedule: '1' } }),
+          80
+        );
       }
     } else if (actionId === 'start_timer') {
       const habitId = detail.notification?.data?.habitId;
       if (habitId) {
         await handleStartTimerAction(parseInt(habitId, 10), detail.notification?.id);
-      }
-    } else if (actionId === 'plus_one') {
-      const habitId = detail.notification?.data?.habitId;
-      if (habitId) {
-        await handlePlusOneAction(parseInt(habitId, 10), detail.notification?.id);
       }
     }
   } catch (e) {

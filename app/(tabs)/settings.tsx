@@ -57,7 +57,6 @@ export default function Settings() {
     setHapticsEnabled,
     setWeeklyOverview,
     setFocusNotifications,
-    setAlarmEnabled,
     triggerHaptic,
     hydrate,
   } = useStore();
@@ -123,14 +122,6 @@ export default function Settings() {
       setFocusNotifications(v);
     },
     [setFocusNotifications, triggerHaptic]
-  );
-
-  const onToggleAlarm = useCallback(
-    (v: boolean) => {
-      triggerHaptic('light');
-      setAlarmEnabled(v);
-    },
-    [setAlarmEnabled, triggerHaptic]
   );
 
   useEffect(() => {
@@ -317,39 +308,81 @@ export default function Settings() {
     }
     setImporting(true);
     try {
-      // restore inside a transaction
+      // Build a lookup of existing habits by (name, occurrence, time) to detect matches
+      const existingRows = await db.getAllAsync<{ id: string; name: string; occurrence: string; time: string }>(
+        `SELECT id, name, occurrence, time FROM habits`
+      );
+      const existingMap = new Map<string, string>(); // key → habit id
+      for (const r of existingRows) {
+        existingMap.set(
+          `${r.name ?? ''}||${r.occurrence ?? ''}||${r.time ?? ''}`,
+          r.id
+        );
+      }
+
+      // backupId → currentId mapping for log rewriting
+      const idMap = new Map<string, string>();
+      let matched = 0;
+      let added = 0;
+
       await db.execAsync('BEGIN TRANSACTION');
       try {
-        await db.execAsync('DELETE FROM habit_logs');
-        await db.execAsync('DELETE FROM habits');
         for (const h of habitsArr) {
-          await db.runAsync(
-            `INSERT INTO habits (id, name, icon, progressType, time, reminder, strictMode, archived, goalMinutes, goalQty, unit, occurrence, createdAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              h.id ?? null,
-              h.name,
-              h.icon,
-              h.progressType,
-              h.time ?? null,
-              h.reminder ? 1 : 0,
-              h.strictMode ? 1 : 0,
-              h.archived ? 1 : 0,
-              h.goalMinutes ?? null,
-              h.goalQty ?? null,
-              h.unit ?? null,
-              h.occurrence,
-              h.createdAt,
-            ]
-          );
+          const key = `${h.name ?? ''}||${h.occurrence ?? ''}||${h.time ?? ''}`;
+          const existingId = existingMap.get(key);
+          if (existingId) {
+            matched++;
+            idMap.set(String(h.id), existingId);
+            await db.runAsync(
+              `UPDATE habits SET icon=?, progressType=?, reminder=?, strictMode=?, archived=?, goalMinutes=?, goalQty=?, unit=?
+               WHERE id=?`,
+              [
+                h.icon,
+                h.progressType,
+                h.reminder ? 1 : 0,
+                h.strictMode ? 1 : 0,
+                h.archived ? 1 : 0,
+                h.goalMinutes ?? null,
+                h.goalQty ?? null,
+                h.unit ?? null,
+                existingId,
+              ]
+            );
+          } else {
+            added++;
+            const newId = String(h.id);
+            idMap.set(newId, newId);
+            await db.runAsync(
+              `INSERT INTO habits (id, name, icon, progressType, time, reminder, strictMode, archived, goalMinutes, goalQty, unit, occurrence, createdAt)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                newId,
+                h.name,
+                h.icon,
+                h.progressType,
+                h.time ?? null,
+                h.reminder ? 1 : 0,
+                h.strictMode ? 1 : 0,
+                h.archived ? 1 : 0,
+                h.goalMinutes ?? null,
+                h.goalQty ?? null,
+                h.unit ?? null,
+                h.occurrence,
+                h.createdAt,
+              ]
+            );
+          }
         }
+
         for (const l of logsArr) {
+          const currentHabitId = idMap.get(String(l.habitId));
+          if (!currentHabitId) continue; // skip orphan logs
           await db.runAsync(
-            `INSERT INTO habit_logs (id, habitId, date, loggedMinutes, loggedQty, completed)
+            `INSERT OR REPLACE INTO habit_logs (id, habitId, date, loggedMinutes, loggedQty, completed)
              VALUES (?, ?, ?, ?, ?, ?)`,
             [
               l.id ?? null,
-              l.habitId,
+              currentHabitId,
               l.date,
               l.loggedMinutes ?? null,
               l.loggedQty ?? null,
@@ -357,6 +390,7 @@ export default function Settings() {
             ]
           );
         }
+
         if (Array.isArray(settingsArr) && settingsArr.length) {
           for (const s of settingsArr) {
             if (s.key && s.value != null) {
@@ -376,12 +410,20 @@ export default function Settings() {
       }
       await useHabitStore.getState().loadHabits();
       await hydrate();
+      const { syncHabitReminder } = await import('@/services/notificationService');
+      for (const h of useHabitStore.getState().habits) {
+        if (h.reminder && h.time) {
+          try {
+            await syncHabitReminder(h.id, h.name, h.time, h.occurrence, h.reminder);
+          } catch {}
+        }
+      }
       triggerHaptic('medium');
       setImportVisible(false);
       setImportText('');
       showAlert({
         title: 'Restored',
-        message: `${habitsArr.length} habits and ${logsArr.length} logs imported.`,
+        message: `${matched} updated, ${added} new habits imported.`,
         type: 'success',
         primaryText: 'Great!',
       });
@@ -656,30 +698,6 @@ export default function Settings() {
                 accessibilityLabel="Focus notifications for timer and stopwatch"
               />
             </View>
-            <SettingDivider />
-            {/* Alarm reminders — full-screen alarm style */}
-            <View className="flex-row items-center justify-between px-3.5 py-3.5">
-              <View className="flex-1 flex-row items-center gap-3 pr-3">
-                <View
-                  className="h-10 w-10 items-center justify-center rounded-xl border border-border"
-                  style={{ backgroundColor: `${DataColors.danger}14` }}>
-                  <Ionicons name="alarm-outline" size={20} color={DataColors.danger} />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[15px] font-semibold text-text">Alarm reminders</Text>
-                  <Text className="mt-0.5 text-xs text-secondary">
-                    {alarmEnabled
-                      ? 'Full-screen alarm for reminders'
-                      : 'Standard notification reminders'}
-                  </Text>
-                </View>
-              </View>
-              <AnimatedSwitch
-                value={alarmEnabled}
-                onValueChange={onToggleAlarm}
-                accessibilityLabel="Alarm reminders"
-              />
-            </View>
           </View>
           <Text className="ml-1 mt-2 text-xs leading-4 text-textMuted">
             Summarizes completions, streaks & missed habits from the past week.
@@ -876,8 +894,8 @@ export default function Settings() {
                   </Pressable>
                 </View>
                 <Text className="mb-2 text-xs leading-4 text-secondary">
-                  Paste the JSON you exported (from Share) or choose a file. This will replace
-                  current habits & logs.
+                  Paste the JSON you exported (from Share) or choose a file. Habits matching by
+                  name, time & frequency are updated; new habits are added.
                 </Text>
                 <Pressable
                   onPress={handlePickFile}

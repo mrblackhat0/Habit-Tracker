@@ -78,7 +78,6 @@
 | **[Zustand](https://github.com/pmndrs/zustand)**                                   | Global state management                                 |
 | **[@notifee/react-native](https://notifee.app/)**                                  | Native foreground services and actionable notifications |
 | **[React Native Reanimated](https://docs.swmansion.com/react-native-reanimated/)** | Fluid 60fps animations and transitions                  |
-| **[@shopify/flash-list](https://shopify.github.io/flash-list/)**                   | High-performance virtualized lists                      |
 | **[expo-haptics](https://docs.expo.dev/versions/latest/sdk/haptics/)**             | Physical tactile vibration feedback                     |
 
 ---

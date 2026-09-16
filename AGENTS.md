@@ -33,7 +33,7 @@ npx expo export -p android --no-bytecode  # production bundle check
 ## Routing & Structure
 - `app/(tabs)/` — Today (`index.tsx`), Analytics, Calendar, Settings. `app/habit/[id].tsx` + `app/habit/[id]/goal.tsx`, `app/addHabit.tsx`, `app/onboarding.tsx`, `app/archived.tsx`.
 - `db/` — `schema.ts` (`initDb`), `habits.ts`, `focus.ts` (active_session singleton, daily_totals). `store/` — `habitStore.ts`, `focusStore.ts`, `store.ts` (onboarding hydration). `services/` — `notificationService.ts`, `notifeeBackground.js` (must stay imported in `_layout.tsx` before use), `weeklyOverview.ts`.
-- `components/` — 29 UI components (FlashList, Reanimated, SVG rings).
+- `components/` — 29 UI components (Reanimated, SVG rings).
 - `plugins/with-notification-icon.js` — `withDangerousMod` copies `assets/notification-icon/android/mipmap-*/ic_notification.png` → `android/app/src/main/res/{mipmap,drawable}-*/`. Requires prebuild to take effect.
 
 ## Styling

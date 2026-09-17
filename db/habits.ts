@@ -7,7 +7,6 @@ import {
 } from '../utils/dates';
 import { db } from './database';
 export { db };
-export { dbReady } from './database';
 
 export type ProgressType = 'duration' | 'quantity' | 'check';
 
@@ -27,7 +26,7 @@ export interface Habit {
   createdAt: string;
 }
 
-export interface HabitLog {
+interface HabitLog {
   id: number;
   habitId: number;
   date: string; // 'YYYY-MM-DD'
@@ -50,7 +49,7 @@ export type CreateHabitInput = {
   createdAt?: string;
 };
 
-export type LogCompletionInput = {
+type LogCompletionInput = {
   habitId: number;
   date: string; // 'YYYY-MM-DD'
   loggedMinutes?: number | null;
@@ -132,7 +131,7 @@ export interface TodayHabitItem extends Habit {
   streak: number;
 }
 
-export function getStreaksFromSet(occurrence: string, completedDates: Set<string>, todayStr: string): StreakInfo {
+function getStreaksFromSet(occurrence: string, completedDates: Set<string>, todayStr: string): StreakInfo {
   const scheduledDays = parseOccurrence(occurrence);
   if (completedDates.size === 0) {
     return { currentStreak: 0, bestStreak: 0 };
@@ -381,11 +380,6 @@ export async function getStreaks(habitId: number, occurrence: string, todayDate?
   return { currentStreak, bestStreak };
 }
 
-export async function getStreak(habitId: number, occurrence: string, todayDate?: string): Promise<number> {
-  const res = await getStreaks(habitId, occurrence, todayDate);
-  return res.currentStreak;
-}
-
 export async function deleteHabit(id: number): Promise<void> {
   await db.runAsync(`DELETE FROM habits WHERE id = ?`, [id]);
 }
@@ -455,22 +449,6 @@ export async function getLogsByHabitIdAndMonth(
   );
 }
 
-export async function getCompletedDatesForMonth(
-  habitId: number,
-  year: number,
-  month: number // 1-indexed
-): Promise<Set<string>> {
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-  const rows = await db.getAllAsync<{ date: string }>(
-    `SELECT date FROM habit_logs WHERE habitId = ? AND completed = 1 AND date >= ? AND date <= ?`,
-    [habitId, startDate, endDate]
-  );
-
-  return new Set(rows.map((r) => r.date));
-}
 
 export async function getAllHabitsMonthlyCompletion(year: number, monthIndex: number): Promise<Map<number, Set<string>>> {
   const month = String(monthIndex + 1).padStart(2, '0');

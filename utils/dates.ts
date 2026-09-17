@@ -38,7 +38,7 @@ export function getPrevDateStr(dateStr: string): string {
   return `${year}-${month}-${day}`;
 }
 
-export function getNextDateStr(dateStr: string): string {
+function getNextDateStr(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
   d.setDate(d.getDate() + 1);
   const year = d.getFullYear();
@@ -53,55 +53,4 @@ export function getNextScheduledDateStr(dateStr: string, scheduledDays: number[]
     cur = getNextDateStr(cur);
   }
   return cur;
-}
-
-export type DayCell = {
-  date: string;
-  dayOfMonth: number;
-  status: 'completed' | 'missed' | 'unscheduled' | 'future' | 'today-pending' | 'not-created' | 'blank';
-};
-
-export function getMonthGrid(
-  occurrence: string,
-  completedDates: Set<string>,
-  year: number,
-  month: number,
-  createdAt: string
-): DayCell[] {
-  const createdAtDateStr = createdAt.slice(0, 10);
-  const scheduledDays = parseOccurrence(occurrence);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const todayStr = getTodayDateStr();
-
-  const firstDayWeekday = new Date(year, month - 1, 1).getDay(); // 0=Sun..6=Sat
-
-  const cells: DayCell[] = [];
-
-  // leading blanks so day 1 lands under its real weekday
-  for (let i = 0; i < firstDayWeekday; i++) {
-    cells.push({ date: '', dayOfMonth: 0, status: 'blank' });
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const scheduled = isScheduledDay(dateStr, scheduledDays);
-
-    let status: DayCell['status'];
-    if (dateStr < createdAtDateStr) {
-      status = 'not-created';
-    } else if (!scheduled) {
-      status = 'unscheduled';
-    } else if (dateStr > todayStr) {
-      status = 'future';
-    } else if (completedDates.has(dateStr)) {
-      status = 'completed';
-    } else if (dateStr === todayStr) {
-      status = 'today-pending';
-    } else {
-      status = 'missed';
-    }
-
-    cells.push({ date: dateStr, dayOfMonth: d, status });
-  }
-  return cells;
 }

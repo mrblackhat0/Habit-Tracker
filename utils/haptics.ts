@@ -26,10 +26,3 @@ export async function hapticNotification(
     await Haptics.notificationAsync(type);
   } catch {}
 }
-
-export async function hapticSelection() {
-  if (!isEnabled()) return;
-  try {
-    await Haptics.selectionAsync();
-  } catch {}
-}

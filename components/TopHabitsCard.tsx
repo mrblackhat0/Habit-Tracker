@@ -18,7 +18,10 @@ function AnimatedBar({ rate, delay = 0 }: { rate: number; delay?: number }) {
   const width = useSharedValue(0);
 
   useEffect(() => {
-    width.value = withDelay(delay, withTiming(pct, { duration: 700, easing: Easing.out(Easing.cubic) }));
+    width.value = withDelay(
+      delay,
+      withTiming(pct, { duration: 700, easing: Easing.out(Easing.cubic) })
+    );
   }, [pct, delay]);
 
   const style = useAnimatedStyle(() => ({ width: `${width.value}%` as any }));
@@ -37,10 +40,14 @@ export default function TopHabitsCard({ entries }: { entries: TopHabitEntry[] })
   if (entries.length === 0) return null;
 
   return (
-    <Animated.View entering={FadeIn.duration(320).delay(80)} className="mt-4 rounded-2xl border border-border bg-surface p-5">
+    <Animated.View
+      entering={FadeIn.duration(320).delay(80)}
+      className="mt-4 rounded-2xl border border-border bg-surface p-5">
       <View className="mb-4 flex-row items-center justify-center gap-2">
         <Ionicons name="trophy" size={20} color="#EAB308" />
-        <Text className="text-lg font-bold text-text">Top 5 This Month</Text>
+        <Text className="text-lg font-bold text-text">
+          Top {entries.length === 5 ? '5' : ''} Habits This Month
+        </Text>
       </View>
       {entries.map((e, idx) => (
         <Animated.View
@@ -65,7 +72,9 @@ export default function TopHabitsCard({ entries }: { entries: TopHabitEntry[] })
               <AnimatedBar rate={e.rate} delay={idx * 120} />
             </View>
           </View>
-          <Text className="w-12 text-right text-base font-bold text-primary">{Math.round(e.rate * 100)}%</Text>
+          <Text className="w-12 text-right text-base font-bold text-primary">
+            {Math.round(e.rate * 100)}%
+          </Text>
         </Animated.View>
       ))}
     </Animated.View>

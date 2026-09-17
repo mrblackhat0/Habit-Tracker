@@ -7,6 +7,7 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
+  ToastAndroid,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams, Stack } from 'expo-router';
@@ -127,14 +128,17 @@ const AddHabit = () => {
         return;
       }
       updateHabit(Number(habitId), payload);
+      ToastAndroid.show('Habit updated', ToastAndroid.SHORT);
       router.back();
       return;
     }
 
     if (isEdit && habitId) {
       updateHabit(Number(habitId), payload);
+      ToastAndroid.show('Habit updated', ToastAndroid.SHORT);
     } else {
       addHabit(payload);
+      ToastAndroid.show('Habit created', ToastAndroid.SHORT);
     }
 
     router.back();
@@ -351,6 +355,7 @@ const AddHabit = () => {
         onConfirm={() => {
           if (pendingPayload && habitId) {
             updateHabit(Number(habitId), pendingPayload);
+            ToastAndroid.show('Habit updated', ToastAndroid.SHORT);
             router.back();
           }
           setShowTypeChangeModal(false);

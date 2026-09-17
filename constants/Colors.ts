@@ -30,7 +30,6 @@ export const ThemeConfig = {
 
 export const Colors = ThemeConfig.colors;
 export const DataColors = ThemeConfig.data;
-export const HeatmapColors = ThemeConfig.heatmap;
 
 export const CustomDarkTheme = {
   ...NavDarkTheme,
@@ -45,5 +44,3 @@ export const CustomDarkTheme = {
     notification: ThemeConfig.data.danger,
   },
 };
-
-export default ThemeConfig;

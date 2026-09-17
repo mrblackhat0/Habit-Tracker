@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { View, Text, Pressable, RefreshControl, FlatList, Image } from 'react-native';
+import { View, Text, Pressable, RefreshControl, FlatList, Image, ToastAndroid } from 'react-native';
 import { hapticImpact } from '@/utils/haptics';
 import { HabitCard, HabitCardItem } from '@/components/HabitCard';
 import { HabitCardListSkeleton } from '@/components/HabitCardSkeleton';
@@ -330,14 +330,20 @@ export default function Home() {
   const handleDeleteHabit = useCallback(
     (habit: HabitCardItem) => {
       deleteHabit(habit.id);
+      ToastAndroid.show('Habit deleted', ToastAndroid.SHORT);
     },
     [deleteHabit]
   );
 
   const handleArchiveHabit = useCallback(
     (habit: HabitCardItem) => {
-      if (habit.archived) unarchiveHabit(habit.id);
-      else archiveHabit(habit.id);
+      if (habit.archived) {
+        unarchiveHabit(habit.id);
+        ToastAndroid.show('Habit unarchived', ToastAndroid.SHORT);
+      } else {
+        archiveHabit(habit.id);
+        ToastAndroid.show('Habit archived', ToastAndroid.SHORT);
+      }
     },
     [archiveHabit, unarchiveHabit]
   );
@@ -533,7 +539,10 @@ export default function Home() {
         visible={confirmModalVisible}
         habit={confirmHabit}
         onClose={() => setConfirmModalVisible(false)}
-        onConfirm={(h) => toggleCompletion(h.id)}
+        onConfirm={(h) => {
+          toggleCompletion(h.id);
+          ToastAndroid.show('Habit completed', ToastAndroid.SHORT);
+        }}
       />
 
       {/* Uncomplete Confirmation Modal for Completed Goals — resets log */}
@@ -541,8 +550,14 @@ export default function Home() {
         visible={uncompleteModalVisible}
         habit={uncompleteHabit}
         onClose={() => setUncompleteModalVisible(false)}
-        onReset={(h) => resetCompletion(h.id)}
-        onConfirm={(h) => markAsUnComplete(h.id)}
+        onReset={(h) => {
+          resetCompletion(h.id);
+          ToastAndroid.show('Completion reset', ToastAndroid.SHORT);
+        }}
+        onConfirm={(h) => {
+          markAsUnComplete(h.id);
+          ToastAndroid.show('Habit uncompleted', ToastAndroid.SHORT);
+        }}
       />
     </View>
   );

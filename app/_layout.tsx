@@ -15,7 +15,9 @@ import { AppState } from 'react-native';
 import notifee, { EventType } from '@notifee/react-native';
 import { useFocusStore } from '@/store/focusStore';
 import { useStore } from '@/store/store';
-import '@/services/notifeeBackground.js';
+import { useHabitStore } from '@/store/habitStore';
+import { handleMarkCompletedAction, handleStartTimerAction } from '@/services/notificationService';
+import BootScreen from '@/components/BootScreen';
 
 enableFreeze(false);
 configureReanimatedLogger({
@@ -23,9 +25,6 @@ configureReanimatedLogger({
   strict: false,
 });
 SplashScreen.preventAutoHideAsync();
-
-import { useHabitStore } from '@/store/habitStore';
-import { handleMarkCompletedAction, handleStartTimerAction } from '@/services/notificationService';
 
 function NavigationGate() {
   const segments = useSegments();
@@ -53,16 +52,13 @@ export default function RootLayout() {
   const [appReady, setAppReady] = useState(false);
 
   useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
+  useEffect(() => {
     SystemUI.setBackgroundColorAsync(Colors.background).catch(() => {});
     if ((fontsLoaded || fontError) && hydrated) {
       setAppReady(true);
-      if (hasCompletedOnboarding) {
-        SplashScreen.hideAsync().catch(() => {});
-      } else {
-        setTimeout(() => {
-          SplashScreen.hideAsync().catch(() => {});
-        }, 1500);
-      }
     }
     notifee.getInitialNotification().then(async (initial) => {
       if (initial?.pressAction?.id === 'default') {
@@ -93,6 +89,50 @@ export default function RootLayout() {
     dbReady
       .then(() => useStore.getState().hydrate())
       .then(() => useFocusStore.getState().loadActiveSession())
+      .then(async () => {
+        // Consume pending reschedule intent from background handler
+        try {
+          const { db } = await import('@/db/habits');
+          const row = db.getFirstSync<{ value: string }>(
+            `SELECT value FROM app_settings WHERE key = ?`,
+            ['pending_reschedule_habit_id']
+          );
+          if (row?.value) {
+            db.runSync(`DELETE FROM app_settings WHERE key = ?`, ['pending_reschedule_habit_id']);
+            const hasCompletedOnboarding = useStore.getState().hasCompletedOnboarding;
+            if (hasCompletedOnboarding) {
+              router.navigate({
+                pathname: '/habit/[id]',
+                params: { id: row.value, reschedule: '1' },
+              });
+            }
+          }
+        } catch {}
+        // One-time migration: re-sync all reminder habits to pre-booked one-shot triggers
+        try {
+          const { db } = await import('@/db/habits');
+          const flag = db.getFirstSync<{ value: string }>(
+            `SELECT value FROM app_settings WHERE key = ?`,
+            ['reminder_migration_v1_done']
+          );
+          if (!flag) {
+            const { getAllHabits } = await import('@/db/habits');
+            const { syncHabitReminder } = await import('@/services/notificationService');
+            const habits = await getAllHabits();
+            for (const h of habits) {
+              if (h.reminder && h.time) {
+                await syncHabitReminder(h.id, h.name, h.time, h.occurrence, h.reminder).catch(
+                  () => {}
+                );
+              }
+            }
+            db.runSync(
+              `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+              ['reminder_migration_v1_done', '1']
+            );
+          }
+        } catch {}
+      })
       .catch(() => {});
     // Warm notification channels in background so first timer start is instant
     import('@/services/notificationService')
@@ -201,7 +241,7 @@ export default function RootLayout() {
     };
   }, []);
 
-  if (!appReady || !hydrated) return null; // splash stays visible, nothing renders underneath
+  if (!appReady || !hydrated) return <BootScreen />; // splash stays visible, nothing renders underneath
 
   return (
     <SafeAreaProvider>

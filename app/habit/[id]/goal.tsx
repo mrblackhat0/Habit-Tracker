@@ -42,11 +42,6 @@ export default function GoalScreen() {
         options={{
           title: `Goal - ${toTitleCase(habit.name)} (${habit.goalMinutes || habit.goalQty} ${habit.unit || 'min'})`,
           headerBackTitle: 'Back',
-          // headerLeft: () => (
-          //   <Pressable onPress={handleBack} hitSlop={8} style={{ paddingRight: 12 }}>
-          //     <Ionicons name="chevron-back" size={24} color={Colors.text} />
-          //   </Pressable>
-          // ),
         }}
       />
 

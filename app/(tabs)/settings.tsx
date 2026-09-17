@@ -783,8 +783,13 @@ export default function Settings() {
           <View className="overflow-hidden rounded-2xl border border-border bg-surface">
             <View className="flex-row items-center justify-between px-3.5 py-3.5">
               <View className="flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-xl border border-border bg-background">
-                  <Ionicons name="aperture-outline" size={20} color={Colors.primary} />
+                <View className="h-10 w-10 items-center overflow-hidden justify-center rounded-xl border border-border bg-secondary/10">
+                  {/* <Ionicons name="aperture-outline" size={20} color={Colors.primary} /> */}
+                  <Image 
+                    source={require("@/assets/icon_transparent.png")} 
+                    style={{ width: 32, height: 32 ,borderRadius:5}} 
+                    resizeMode="cover" 
+                  />
                 </View>
                 <View>
                   <Text className="text-sm font-bold text-text">Habit Tracker</Text>

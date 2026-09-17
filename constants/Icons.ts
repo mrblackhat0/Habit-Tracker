@@ -1,6 +1,6 @@
 import { Colors } from './Colors';
 
-export interface HabitIconOption {
+interface HabitIconOption {
   name: string;
   color: string;
 }

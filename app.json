@@ -8,19 +8,14 @@
       "ios",
       "android"
     ],
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/favicon.png"
-    },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-branded.png",
-          "resizeMode": "contain",
-          "backgroundColor": "#0D0D12"
+          "backgroundColor": "#0D0D12",
+          "image": "./assets/splash.png",
+          "resizeMode": "contain"
         }
       ],
       "expo-sqlite",
@@ -68,14 +63,16 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.WAKE_LOCK",
         "android.permission.CAMERA",
-        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "56244fad-ca8c-464c-8ccf-e07da9123992"
+        "projectId": "c539cb3c-8161-4e85-a9ca-a76560b7ca7a"
       }
-    }
+    },
+    "owner": "rex143"
   }
 }

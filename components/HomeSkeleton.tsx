@@ -72,9 +72,6 @@ export const WeekStripSkeleton = () => {
 export default function HomeSkeleton() {
   return (
     <View className="flex-1" style={{ gap: 16 }}>
-      {/* Greeting header */}
-      {/* <GreetingHeaderSkeleton /> */}
-
       {/* Today's Progress */}
       <ProgressSkeleton />
 

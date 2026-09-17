@@ -1,7 +1,7 @@
 import { db, logCompletion } from './habits';
 
 export type FocusMode = 'timer' | 'stopwatch';
-export type FocusStatus = 'running' | 'paused';
+type FocusStatus = 'running' | 'paused';
 
 export interface ActiveSession {
   id: 1;
@@ -162,7 +162,7 @@ function getLocalDateString(dateObj: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-export function incrementDailyTotal(habitId: number, dateStr: string, durationMs: number): number {
+function incrementDailyTotal(habitId: number, dateStr: string, durationMs: number): number {
   ensureFocusDb();
   runSyncRetry(
     `INSERT INTO daily_totals (habitId, date, totalDurationMs)
@@ -178,6 +178,16 @@ export function incrementDailyTotal(habitId: number, dateStr: string, durationMs
   );
 
   return row?.totalDurationMs ?? 0;
+}
+
+export function setDailyTotal(habitId: number, dateStr: string, durationMs: number) {
+  ensureFocusDb();
+  runSyncRetry(
+    `INSERT INTO daily_totals (habitId, date, totalDurationMs)
+     VALUES (?, ?, ?)
+     ON CONFLICT(habitId, date) DO UPDATE SET totalDurationMs = excluded.totalDurationMs`,
+    [habitId, dateStr, durationMs]
+  );
 }
 
 export function getDailyTotalMs(habitId: number, dateStr: string): number {

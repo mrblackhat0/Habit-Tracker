@@ -49,6 +49,8 @@
   - Live chronometer notification in the Android notification tray using `@notifee/react-native`.
   - Pause, Resume, and Stop controls directly from notification actions.
   - Crash and reboot recovery with automatic stale session prompts.
+  - Pre-booked one-shot exact alarms for reliable reminders even when the app is killed.
+  - Timer and manual completion synced via `daily_totals` as the single source of truth.
 - **📈 Rich Visual Analytics**:
   - Weekly progress bar charts and monthly pie charts.
   - Habit completion heatmaps and streak counters.
@@ -56,8 +58,13 @@
 - **📅 Interactive Calendar & History Logs**:
   - Multi-month navigation with ring progress indicators.
   - Daily audit trail of logged habits and session minutes.
+- **🔔 Smart Notifications**:
+  - Toast feedback on habit create, update, complete, uncomplete, delete, archive, and unarchive.
+  - Goal edit auto-recalculates completion state (duration and quantity habits).
+  - Accurate notification timer synced with in-app countdown.
 - **🌙 Obsidian Neon Design**:
   - Tailored dark UI (`#0D0D12` background) with high-contrast neon accents.
+  - Animated boot screen with per-character zoom-in text reveal.
   - Micro-haptic tactile feedback via `expo-haptics`.
   - Animated sheets, custom modals, and smooth spring physics with `react-native-reanimated`.
 - **🔒 100% Offline & Private**:
@@ -86,23 +93,33 @@
 
 ```
 Habit-Tracker/
+├── index.js                  # Entry point: registers notifee background handler, then expo-router
 ├── app/                      # Expo Router navigation routes
 │   ├── (tabs)/               # Tab screens: Today, Analytics, Calendar, Settings
-│   ├── habit/                # Habit details and focus session routes
+│   ├── habit/                # Habit details, focus session, and goal routes
 │   ├── addHabit.tsx          # Create & edit habit workflow
-│   └── onboarding.tsx        # First-time user onboarding
-├── assets/                   # App assets (icons, splash, notifications)
+│   ├── archived.tsx          # Archived habits management
+│   ├── onboarding.tsx        # First-time user onboarding
+│   └── _layout.tsx           # Root layout with SQLiteProvider, boot screen, and migration
+├── assets/                   # App assets (icons, notification icons)
 │   ├── AppIcon.icon/         # Liquid Glass iOS asset composer
 │   └── notification-icon/    # Android density notification icons
 ├── components/               # Reusable UI components & modals
 │   ├── Focus.tsx             # Interactive timer & stopwatch engine
+│   ├── BootScreen.tsx        # Animated boot screen with per-character text reveal
 │   ├── HabitCard.tsx         # Habit list item with instant completion
 │   ├── RingProgressBar.tsx   # SVG ring progress visualization
 │   └── ...                   # Skeletons, sheets, and confirmation dialogs
 ├── db/                       # SQLite schema, queries, and focus session persistence
+│   ├── database.ts           # Single SQLite connection with WAL mode
+│   ├── schema.ts             # Table definitions and migrations
+│   ├── habits.ts             # Habit CRUD and log queries
+│   └── focus.ts              # Active session singleton, daily_totals, and timer resolution
 ├── services/                 # Notifee notification manager & background handlers
+│   ├── notificationService.ts # Pre-booked reminders, foreground service, completion actions
+│   └── notifeeBackground.js   # Headless background event handler (imported via index.js)
 ├── store/                    # Zustand habit, focus, and settings stores
-├── plugins/                  # Custom Expo config plugins
+├── plugins/                  # Custom Expo config plugins (notification icon)
 └── screenshots/              # App preview screenshots
 ```
 

@@ -16,15 +16,8 @@ import {
 } from '../db/habits';
 
 import { syncHabitReminder, cancelHabitReminders } from '../services/notificationService';
-import { seedDailyTotal, resetTodayLoggedMinutes } from '../db/focus';
-
-function getTodayDateStr(): string {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { seedDailyTotal, resetTodayLoggedMinutes, setDailyTotal } from '../db/focus';
+import { getTodayDateStr } from '../utils/dates';
 
 export interface HabitStoreState {
   habits: Habit[];
@@ -130,6 +123,40 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
       }
     }
 
+    // Recalculate today's completion state if goal changed
+    const newGoalMinutes = habitData.goalMinutes !== undefined ? habitData.goalMinutes : undefined;
+    const newGoalQty = habitData.goalQty !== undefined ? habitData.goalQty : undefined;
+    if (
+      existing &&
+      (newGoalMinutes !== undefined || newGoalQty !== undefined) &&
+      (existing.progressType === 'duration' || existing.progressType === 'quantity')
+    ) {
+      const { db } = await import('../db/habits');
+      const todayStr = getTodayDateStr();
+      try {
+        const log: any = db.getFirstSync(
+          `SELECT loggedMinutes, loggedQty, completed FROM habit_logs WHERE habitId = ? AND date = ?`,
+          [id, todayStr]
+        );
+        if (log) {
+          const goalMin = newGoalMinutes !== undefined ? newGoalMinutes : existing.goalMinutes;
+          const goalQ = newGoalQty !== undefined ? newGoalQty : existing.goalQty;
+          let newCompleted = log.completed === 1;
+          if (existing.progressType === 'duration' && goalMin != null) {
+            newCompleted = (log.loggedMinutes ?? 0) >= goalMin;
+          } else if (existing.progressType === 'quantity' && goalQ != null) {
+            newCompleted = (log.loggedQty ?? 0) >= goalQ;
+          }
+          if (newCompleted !== (log.completed === 1)) {
+            db.runSync(
+              `UPDATE habit_logs SET completed = ? WHERE habitId = ? AND date = ?`,
+              [newCompleted ? 1 : 0, id, todayStr]
+            );
+          }
+        }
+      } catch {}
+    }
+
     const updated = await dbUpdateHabit(id, habitData);
     await get().loadHabits();
     syncHabitReminder(updated.id, updated.name, updated.time, updated.occurrence, updated.reminder);
@@ -189,9 +216,9 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
         let optimisticLoggedMinutes = h.loggedMinutes ?? 0;
         let optimisticLoggedQty = h.loggedQty ?? 0;
         if (newDone) {
-          if ((h.loggedMinutes ?? 0) === 0 && h.goalMinutes)
+          if ((h.loggedMinutes ?? 0) <= (h.goalMinutes ?? 0) && h.goalMinutes)
             optimisticLoggedMinutes = h.goalMinutes;
-          if ((h.loggedQty ?? 0) === 0 && h.goalQty) optimisticLoggedQty = h.goalQty;
+          if ((h.loggedQty ?? 0) <= (h.goalQty ?? 0) && h.goalQty) optimisticLoggedQty = h.goalQty;
         }
         const next = [...current];
         next[idx] = {
@@ -218,9 +245,10 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
 
       if (newCompleted) {
         const existingMins = existingLog?.loggedMinutes ?? 0;
-        loggedMinutes = existingMins > 0 ? existingMins : (habit?.goalMinutes ?? null);
+        loggedMinutes =
+          existingMins > (habit?.goalMinutes ?? 0) ? existingMins : (habit?.goalMinutes ?? null);
         const existingQty = existingLog?.loggedQty ?? 0;
-        loggedQty = existingQty > 0 ? existingQty : (habit?.goalQty ?? null);
+        loggedQty = existingQty > (habit?.goalQty ?? 0) ? existingQty : (habit?.goalQty ?? null);
       } else {
         loggedMinutes = existingLog?.loggedMinutes ?? null;
         loggedQty = existingLog?.loggedQty ?? null;
@@ -234,11 +262,9 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
         completed: newCompleted,
       });
 
+      // Set daily_totals to goal so timer sessions accumulate from this baseline
       if (newCompleted && habit?.goalMinutes) {
-        const existingMins = existingLog?.loggedMinutes ?? 0;
-        if (existingMins === 0) {
-          seedDailyTotal(habitId, targetDate, habit.goalMinutes * 60000);
-        }
+        setDailyTotal(habitId, targetDate, habit.goalMinutes * 60000);
       }
 
       // sync from DB in background (no UI block — already optimistic)

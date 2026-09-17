@@ -15,13 +15,13 @@ import { useHabitStore } from './habitStore';
 import { updateSessionNotification, stopSessionNotification, scheduleTimerCompletion, cancelTimerCompletion } from '../services/notificationService';
 import { getTodayDateStr } from '../utils/dates';
 
-export interface StalePromptState {
+interface StalePromptState {
   visible: boolean;
   habitName: string;
   pausedMinsAgo: number;
 }
 
-export interface FocusStoreState {
+interface FocusStoreState {
   activeSession: ActiveSession | null;
   stalePrompt: StalePromptState | null;
 

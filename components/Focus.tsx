@@ -163,7 +163,6 @@ export default function Focus({ habit }: FocusProps) {
     });
   }, [habit.id, todayStr, activeSession, habitsVersion]);
 
-  const todayLoggedMins = Math.floor(todayLoggedMs / 60000);
 
   const isCurrentHabitActive = activeSession?.habitId === habit.id;
   const isOtherHabitActive = Boolean(activeSession && activeSession.habitId !== habit.id);
@@ -172,6 +171,7 @@ export default function Focus({ habit }: FocusProps) {
   // Keyed on the boolean `isRunning` so it never fires during pause or stop.
   const isRunning = isCurrentHabitActive && activeSession?.status === 'running';
   useEffect(() => {
+    if (editedBaseMs) setIsUiReset(true)
     if (!isRunning) {
       prevRemainingRef.current = null;
       prevSessionKeyRef.current = null;
@@ -307,7 +307,7 @@ export default function Focus({ habit }: FocusProps) {
   const fullGoalMs = selectedGoalMins * 60 * 1000;
   const progressPercent = useMemo(() => {
     if (mode === 'stopwatch' || fullGoalMs <= 0) return 0;
-    if (isUiReset) {
+    if (isUiReset || isCurrentHabitActive) {
       return isCurrentHabitActive ? Math.min(100, Math.round((elapsedMs / targetGoalMs) * 100)) : 0;
     }
     const totalAccumulated = todayLoggedMs + (isCurrentHabitActive ? elapsedMs : 0);
@@ -501,11 +501,11 @@ export default function Focus({ habit }: FocusProps) {
                   />
                 </View>
               </View>
-              <Text className="mt-4 text-xs font-medium text-textMuted">
+              {!editedBaseMs && <Text className="mt-4 text-xs font-medium text-textMuted">
                 {!isUiReset && todayLoggedMs > 0
                   ? `${formatDuration(todayLoggedMs)} logged today`
                   : `Target: ${formatDuration(selectedGoalMins * 60 * 1000)} `}
-              </Text>
+              </Text>}
 
               {/* Goal Presets (when idle) */}
               {!isCurrentHabitActive && (

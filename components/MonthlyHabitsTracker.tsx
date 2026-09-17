@@ -166,8 +166,6 @@ export default function MonthlyHabitTracker({
   }, [isDataLoaded]);
 
   if (!ready || !isDataLoaded) {
-    // const count = skeletonHabitCount ?? (habits.length > 0 ? habits.length : 5);
-    // return <MonthlyHabitsTrackerSkeleton daysInMonth={daysInMonth} habitCount={count} />;
     return <ActivityIndicator size={'large'} color={Colors.primary} />;
   }
 

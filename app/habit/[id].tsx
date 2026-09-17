@@ -1,5 +1,5 @@
 import { useLocalSearchParams, router, Stack } from 'expo-router';
-import { View, Text, Pressable, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, ActivityIndicator, ToastAndroid } from 'react-native';
 import { useHabitStore } from '@/store/habitStore';
 import { getStreaks } from '@/db/habits';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -279,7 +279,10 @@ export default function HabitDetailScreen() {
         <Pressable
           disabled={isTodayDone}
           onPress={() => {
-            if (!isTodayDone) toggleCompletion(habitId);
+            if (!isTodayDone) {
+              toggleCompletion(habitId);
+              ToastAndroid.show('Habit completed', ToastAndroid.SHORT);
+            }
           }}
           className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl py-4 shadow-sm ${
             isTodayDone ? 'bg-positive opacity-60 shadow-positive/30' : 'border border-border bg-surface active:opacity-90'

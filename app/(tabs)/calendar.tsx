@@ -152,7 +152,7 @@ export default function CalendarScreen() {
           <View className="mb-2 flex-row">
             {WEEKDAYS.map((w) => (
               <View key={w} className="flex-1 items-center py-1">
-                <Text className="text-xs font-semibold text-secondary">{w}</Text>
+                <Text className="text-base font-semibold text-secondary">{w}</Text>
               </View>
             ))}
           </View>
@@ -173,7 +173,7 @@ export default function CalendarScreen() {
                         setDisplayDate(new Date(y, m - 1, 1));
                       }
                     }}
-                    className={`h-8 w-8 items-center justify-center rounded-full ${
+                    className={`h-10 w-10 items-center justify-center rounded-full ${
                       isSelected
                         ? 'bg-primary'
                         : isToday
@@ -181,7 +181,7 @@ export default function CalendarScreen() {
                           : ''
                     }`}>
                     <Text
-                      className={`text-sm ${
+                      className={`text-lg ${
                         isSelected
                           ? 'font-bold text-white'
                           : isToday
@@ -421,8 +421,6 @@ export default function CalendarScreen() {
           </View>
         )}
       </ScrollView>
-
-
     </View>
   );
 }

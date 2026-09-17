@@ -14,11 +14,7 @@ import {
   handleStartTimerAction,
 } from '../services/notificationService';
 import { router } from 'expo-router';
-
-function getTodayDateStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+import { getTodayDateStr } from '@/utils/dates';
 
 notifee.registerForegroundService(() => new Promise(() => {}));
 
@@ -57,7 +53,6 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
       try {
         const habit = await getHabitById(Number(habitId));
         if (habit && habit.progressType !== 'check') {
-          // router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
           setTimeout(
             () =>
               router.navigate({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } }),
@@ -109,18 +104,20 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
         await handleMarkCompletedAction(parseInt(habitId, 10), detail.notification?.id);
       }
     } else if (actionId === 'reschedule') {
-      // Cancel so there's no stale notification, then navigate to details
-      // screen with reschedule param — same as foreground handler in _layout.tsx
+      // Cancel so there's no stale notification, persist intent for foreground consumption
       const habitId = detail.notification?.data?.habitId;
       const notificationId = detail.notification?.id;
       if (notificationId) {
         notifee.cancelNotification(notificationId).catch(() => {});
       }
       if (habitId) {
-        setTimeout(
-          () => router.navigate({ pathname: '/habit/[id]', params: { id: habitId, reschedule: '1' } }),
-          80
-        );
+        try {
+          const { db } = require('@/db/habits');
+          db.runSync(
+            `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+            ['pending_reschedule_habit_id', String(habitId)]
+          );
+        } catch {}
       }
     } else if (actionId === 'start_timer') {
       const habitId = detail.notification?.data?.habitId;

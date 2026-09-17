@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, ToastAndroid } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -140,6 +140,7 @@ export default function ArchivedScreen() {
                     onPress={() => {
                       triggerHaptic('light');
                       unarchiveHabit(h.id);
+                      ToastAndroid.show('Habit restored', ToastAndroid.SHORT);
                     }}
                     className="mr-2 rounded-full border border-primary/30 bg-primary/10 px-3.5 py-2 active:opacity-70">
                     <Text className="text-xs font-bold text-primary">Restore</Text>

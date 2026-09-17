@@ -3,8 +3,9 @@ import notifee, {
   TriggerType,
   RepeatFrequency,
   TimestampTrigger,
+  AlarmType,
 } from '@notifee/react-native';
-import { ActiveSession, seedDailyTotal } from '@/db/focus';
+import { ActiveSession, seedDailyTotal, setDailyTotal } from '@/db/focus';
 import { Habit, getLogsForHabit, getHabitById, logCompletion, db } from '@/db/habits';
 import { Colors } from '@/constants/Colors';
 import { getTodayDateStr } from '@/utils/dates';
@@ -134,7 +135,7 @@ export async function updateSessionNotification(
       if (session.mode === 'timer' && sessionTargetMs > 0) {
         const remainingMs = Math.max(0, sessionTargetMs - currentElapsedMs);
         // ceil to match in-app countdown (system chronometer truncates)
-        timestamp = now + Math.ceil(remainingMs / 1000) * 1000;
+        timestamp = now + Math.floor(remainingMs / 1000) * 1000;
       } else {
         const totalElapsedMs = (freshStart ? 0 : previousLoggedMs) + currentElapsedMs;
         timestamp = now - totalElapsedMs;
@@ -348,6 +349,8 @@ const DAY_MAP: Record<string, number> = {
   Sat: 6,
 };
 
+const REMINDER_WEEKS_AHEAD = 8;
+
 export async function requestNotificationPermission(): Promise<boolean> {
   try {
     const settings = await notifee.requestPermission();
@@ -401,10 +404,21 @@ export function getNextTriggerTimestamp(dayOfWeek: number, hours: number, minute
 }
 
 export async function cancelHabitReminders(habitId: number) {
+  // Cancel old-style repeating triggers (legacy)
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
     try {
-      await notifee.cancelNotification(`habit_reminder_${habitId}_day_${dayIndex}`);
+      await notifee.cancelTriggerNotification(`habit_reminder_${habitId}_day_${dayIndex}`);
     } catch (_) {}
+  }
+  // Cancel new pre-booked one-shot triggers
+  for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+    for (let week = 0; week < REMINDER_WEEKS_AHEAD; week++) {
+      try {
+        await notifee.cancelTriggerNotification(
+          `habit_reminder_${habitId}_day_${dayIndex}_${week}`
+        );
+      } catch (_) {}
+    }
   }
 }
 
@@ -498,44 +512,59 @@ export async function syncHabitReminder(
   const now = new Date();
   const todayDayOfWeek = now.getDay();
 
+  // Pre-book REMINDER_WEEKS_AHEAD weeks of one-shot exact alarms per selected weekday
   for (const dayOfWeek of selectedDays) {
-    let timestamp = getNextTriggerTimestamp(dayOfWeek, hours, minutes);
+    for (let week = 0; week < REMINDER_WEEKS_AHEAD; week++) {
+      let timestamp = getNextTriggerTimestamp(dayOfWeek, hours, minutes);
 
-    if (dayOfWeek === todayDayOfWeek && isCompletedToday) {
-      const todayTime = new Date();
-      todayTime.setHours(hours, minutes, 0, 0);
-      if (now.getTime() < todayTime.getTime()) {
-        timestamp += 7 * 24 * 60 * 60 * 1000;
+      // Push forward by week iterations (week 0 = next occurrence, week 1 = +7 days, etc.)
+      if (week > 0) {
+        timestamp += week * 7 * 24 * 60 * 60 * 1000;
       }
-    }
 
-    const trigger: TimestampTrigger = {
-      type: TriggerType.TIMESTAMP,
-      timestamp,
-      repeatFrequency: RepeatFrequency.WEEKLY,
-    };
+      // If this is today's day and habit is completed, push +7 days
+      if (dayOfWeek === todayDayOfWeek && isCompletedToday && week === 0) {
+        const todayTime = new Date();
+        todayTime.setHours(hours, minutes, 0, 0);
+        if (now.getTime() < todayTime.getTime()) {
+          timestamp += 7 * 24 * 60 * 60 * 1000;
+        }
+      }
 
-    try {
-      await notifee.createTriggerNotification(
-        {
-          id: `habit_reminder_${habitId}_day_${dayOfWeek}`,
-          title: `Reminder: ${habitName}`,
-          data: { habitId: String(habitId) },
-          android: {
-            channelId: REMINDER_CHANNEL_ID,
-            smallIcon: 'ic_launcher',
-            color: Colors.primary,
-            showTimestamp: true,
-            pressAction: {
-              id: 'default',
+      // Skip if timestamp is in the past
+      if (timestamp <= Date.now()) continue;
+
+      const trigger: TimestampTrigger = {
+        type: TriggerType.TIMESTAMP,
+        timestamp,
+        alarmManager: { type: AlarmType.SET_EXACT_AND_ALLOW_WHILE_IDLE },
+      };
+
+      try {
+        await notifee.createTriggerNotification(
+          {
+            id: `habit_reminder_${habitId}_day_${dayOfWeek}_${week}`,
+            title: `Reminder: ${habitName}`,
+            data: { habitId: String(habitId) },
+            android: {
+              channelId: REMINDER_CHANNEL_ID,
+              smallIcon: 'ic_launcher',
+              color: Colors.primary,
+              showTimestamp: true,
+              pressAction: {
+                id: 'default',
+              },
+              actions,
             },
-            actions,
           },
-        },
-        trigger
-      );
-    } catch (e) {
-      console.warn(`Failed to schedule reminder trigger for day ${dayOfWeek}:`, e);
+          trigger
+        );
+      } catch (e) {
+        console.warn(
+          `Failed to schedule reminder trigger for day ${dayOfWeek} week ${week}:`,
+          e
+        );
+      }
     }
   }
 }
@@ -575,27 +604,56 @@ export async function scheduleWeeklyOverview(enabled: boolean) {
   }
 }
 
-export async function onHabitCompletionToggled(habit: Habit, dateStr: string, completed: boolean) {
-  const todayStr = getTodayDateStr();
-  if (dateStr !== todayStr) return;
-
-  await syncHabitReminder(habit.id, habit.name, habit.time, habit.occurrence, habit.reminder);
+function persistMarkCompletedResult(result: {
+  habitId: number;
+  ok: boolean;
+  step?: string;
+  error?: string;
+}) {
+  try {
+    const row = db.getFirstSync<{ value: string }>(
+      `SELECT value FROM app_settings WHERE key = ?`,
+      ['notifee_mark_completed_last']
+    );
+    const existing = row?.value ? JSON.parse(row.value) : null;
+    const entry = {
+      habitId: result.habitId,
+      at: new Date().toISOString(),
+      ok: result.ok,
+      step: result.step,
+      error: result.error,
+      previous: existing,
+    };
+    db.runSync(
+      `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      ['notifee_mark_completed_last', JSON.stringify(entry)]
+    );
+  } catch {}
 }
 
 export async function handleMarkCompletedAction(habitId: number, notificationId?: string) {
   try {
     const habit = await getHabitById(habitId);
-    if (!habit) return;
+    if (!habit) {
+      persistMarkCompletedResult({ habitId, ok: false, step: 'habit_not_found' });
+      return;
+    }
+
+    persistMarkCompletedResult({ habitId, ok: false, step: 'start' });
 
     const todayStr = getTodayDateStr();
     const logs = await getLogsForHabit(habitId);
     const existingLog = logs.find((l) => l.date === todayStr);
 
     if (!existingLog?.completed) {
+      persistMarkCompletedResult({ habitId, ok: false, step: 'log_completion' });
+
       const existingMins = existingLog?.loggedMinutes ?? 0;
-      const loggedMinutes = existingMins > 0 ? existingMins : (habit.goalMinutes ?? null);
+      const loggedMinutes =
+        existingMins > (habit.goalMinutes ?? 0) ? existingMins : (habit.goalMinutes ?? null);
       const existingQty = existingLog?.loggedQty ?? 0;
-      const loggedQty = existingQty > 0 ? existingQty : (habit.goalQty ?? null);
+      const loggedQty =
+        existingQty > (habit.goalQty ?? 0) ? existingQty : (habit.goalQty ?? null);
 
       await logCompletion({
         habitId,
@@ -605,9 +663,11 @@ export async function handleMarkCompletedAction(habitId: number, notificationId?
         completed: true,
       });
 
-      if (habit.goalMinutes && existingMins === 0) {
-        seedDailyTotal(habitId, todayStr, habit.goalMinutes * 60000);
+      if (habit.goalMinutes) {
+        setDailyTotal(habitId, todayStr, habit.goalMinutes * 60000);
       }
+
+      persistMarkCompletedResult({ habitId, ok: false, step: 'sync_reminder' });
 
       await syncHabitReminder(habit.id, habit.name, habit.time, habit.occurrence, habit.reminder);
     }
@@ -615,67 +675,16 @@ export async function handleMarkCompletedAction(habitId: number, notificationId?
     if (notificationId) {
       await notifee.cancelNotification(notificationId);
     }
+
+    persistMarkCompletedResult({ habitId, ok: true, step: 'completed' });
   } catch (e) {
+    persistMarkCompletedResult({
+      habitId,
+      ok: false,
+      step: 'exception',
+      error: String(e),
+    });
     console.warn('Failed to handle mark_completed action:', e);
-  }
-}
-
-export async function handleRescheduleAction(
-  habitId: number,
-  notificationId?: string,
-  snoozeMinutes: number = 15,
-  fallbackTitle?: string
-) {
-  try {
-    let habit: Habit | null = null;
-    try {
-      habit = await getHabitById(habitId);
-    } catch (e) {
-      console.warn('[notifee] getHabitById failed in reschedule (headless DB may be locked)', e);
-    }
-
-    if (notificationId) {
-      try {
-        await notifee.cancelNotification(notificationId);
-      } catch {}
-    }
-
-    await initReminderChannel();
-
-    // ponytail: when app is closed (headless), DB may be locked — fallback to generic actions/title
-    const actions = habit
-      ? getReminderActions(habit)
-      : [
-          { title: 'Mark Completed', pressAction: { id: 'mark_completed' } },
-          { title: 'Reschedule', pressAction: { id: 'reschedule' } },
-        ];
-    const titleName = habit?.name ?? fallbackTitle ?? 'Habit';
-    const snoozeTime = Date.now() + snoozeMinutes * 60 * 1000;
-    const trigger: TimestampTrigger = {
-      type: TriggerType.TIMESTAMP,
-      timestamp: snoozeTime,
-    };
-
-    await notifee.createTriggerNotification(
-      {
-        id: `habit_reminder_${habitId}_rescheduled_${snoozeTime}`,
-        title: `Reminder: ${titleName}`,
-        data: { habitId: String(habitId) },
-        android: {
-          channelId: REMINDER_CHANNEL_ID,
-          smallIcon: 'ic_launcher',
-          color: Colors.primary,
-          showTimestamp: true,
-          pressAction: {
-            id: 'default',
-          },
-          actions,
-        },
-      },
-      trigger
-    );
-  } catch (e) {
-    console.warn('Failed to handle reschedule action:', e);
   }
 }
 
@@ -712,36 +721,5 @@ export async function handleStartTimerAction(habitId: number, notificationId?: s
     }
   } catch (e) {
     console.warn('Failed to handle start_timer action:', e);
-  }
-}
-
-export async function handlePlusOneAction(habitId: number, notificationId?: string) {
-  try {
-    const habit = await getHabitById(habitId);
-    if (!habit || habit.progressType !== 'quantity') return;
-
-    const todayStr = getTodayDateStr();
-    const logs = await getLogsForHabit(habitId);
-    const todayLog = logs.find((l) => l.date === todayStr);
-
-    const currentQty = todayLog?.loggedQty ?? 0;
-    const newQty = currentQty + 1;
-    const goalQty = habit.goalQty ?? 1;
-    const completed = newQty >= goalQty || (todayLog?.completed ?? false);
-
-    await logCompletion({
-      habitId,
-      date: todayStr,
-      loggedQty: newQty,
-      completed,
-    });
-
-    await syncHabitReminder(habit.id, habit.name, habit.time, habit.occurrence, habit.reminder);
-
-    if (notificationId) {
-      await notifee.cancelNotification(notificationId);
-    }
-  } catch (e) {
-    console.warn('Failed to handle plus_one action:', e);
   }
 }

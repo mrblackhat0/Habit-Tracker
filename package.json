@@ -1,7 +1,7 @@
 {
   "name": "Habit-Tracker-v2",
   "version": "1.0.0",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -23,6 +23,7 @@
     "expo-font": "~57.0.3",
     "expo-haptics": "~57.0.3",
     "expo-image-picker": "~57.0.18",
+    "expo-linking": "~57.0.10",
     "expo-router": "~57.0.21",
     "expo-sharing": "~57.0.20",
     "expo-splash-screen": "~57.0.9",

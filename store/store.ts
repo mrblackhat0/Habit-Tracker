@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import * as Haptics from 'expo-haptics';
 import { db } from '@/db/habits';
 
-export type StartOfWeek = 'Sun' | 'Mon';
+type StartOfWeek = 'Sun' | 'Mon';
 
 export interface AppState {
   darkMode?: boolean;

@@ -50,7 +50,7 @@ async function loadSetting(key: string): Promise<string | null> {
 
 export const useStore = create<AppState>((set, get) => ({
   darkMode: true,
-  userName: 'Rebel',
+  userName: '',
   profileImageUri: null,
   hapticsEnabled: true,
   startOfWeek: 'Sun',
@@ -61,7 +61,7 @@ export const useStore = create<AppState>((set, get) => ({
   _hydrated: false,
 
   setUserName: (name: string) => {
-    const clean = name.trim().slice(0, 24) || 'Rebel';
+    const clean = name.trim().slice(0, 24) || '';
     set({ userName: clean });
     persistSetting('userName', clean);
   },

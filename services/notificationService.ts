@@ -349,7 +349,7 @@ const DAY_MAP: Record<string, number> = {
   Sat: 6,
 };
 
-const REMINDER_WEEKS_AHEAD = 8;
+const REMINDER_WEEKS_AHEAD = 2;
 
 export async function requestNotificationPermission(): Promise<boolean> {
   try {
@@ -410,9 +410,9 @@ export async function cancelHabitReminders(habitId: number) {
       await notifee.cancelTriggerNotification(`habit_reminder_${habitId}_day_${dayIndex}`);
     } catch (_) {}
   }
-  // Cancel new pre-booked one-shot triggers
+  // Cancel new pre-booked one-shot triggers (hardcode 8 weeks to clean up old triggers)
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-    for (let week = 0; week < REMINDER_WEEKS_AHEAD; week++) {
+    for (let week = 0; week < 8; week++) {
       try {
         await notifee.cancelTriggerNotification(
           `habit_reminder_${habitId}_day_${dayIndex}_${week}`
@@ -423,7 +423,7 @@ export async function cancelHabitReminders(habitId: number) {
 }
 
 function getReminderActions(habit: Habit) {
-  const actions: { title: string; pressAction: { id: string } }[] = [];
+  const actions: { title: string; pressAction: { id: string; launchActivity?: string } }[] = [];
 
   if (habit.progressType === 'duration') {
     actions.push({
@@ -439,7 +439,7 @@ function getReminderActions(habit: Habit) {
     },
     {
       title: 'Reschedule',
-      pressAction: { id: 'reschedule' },
+      pressAction: { id: 'reschedule', launchActivity: 'default' },
     }
   );
 
@@ -503,7 +503,7 @@ export async function syncHabitReminder(
     ? getReminderActions(habit)
     : [
         { title: 'Mark Completed', pressAction: { id: 'mark_completed' } },
-        { title: 'Reschedule', pressAction: { id: 'reschedule' } },
+        { title: 'Reschedule', pressAction: { id: 'reschedule', launchActivity: 'default' } },
       ];
 
   const todayStr = getTodayDateStr();
@@ -560,10 +560,7 @@ export async function syncHabitReminder(
           trigger
         );
       } catch (e) {
-        console.warn(
-          `Failed to schedule reminder trigger for day ${dayOfWeek} week ${week}:`,
-          e
-        );
+        console.warn(`Failed to schedule reminder trigger for day ${dayOfWeek} week ${week}:`, e);
       }
     }
   }
@@ -611,10 +608,9 @@ function persistMarkCompletedResult(result: {
   error?: string;
 }) {
   try {
-    const row = db.getFirstSync<{ value: string }>(
-      `SELECT value FROM app_settings WHERE key = ?`,
-      ['notifee_mark_completed_last']
-    );
+    const row = db.getFirstSync<{ value: string }>(`SELECT value FROM app_settings WHERE key = ?`, [
+      'notifee_mark_completed_last',
+    ]);
     const existing = row?.value ? JSON.parse(row.value) : null;
     const entry = {
       habitId: result.habitId,
@@ -652,8 +648,7 @@ export async function handleMarkCompletedAction(habitId: number, notificationId?
       const loggedMinutes =
         existingMins > (habit.goalMinutes ?? 0) ? existingMins : (habit.goalMinutes ?? null);
       const existingQty = existingLog?.loggedQty ?? 0;
-      const loggedQty =
-        existingQty > (habit.goalQty ?? 0) ? existingQty : (habit.goalQty ?? null);
+      const loggedQty = existingQty > (habit.goalQty ?? 0) ? existingQty : (habit.goalQty ?? null);
 
       await logCompletion({
         habitId,

@@ -50,6 +50,7 @@ export default function RootLayout() {
   const hydrated = useStore((s) => s._hydrated);
   const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding);
   const [appReady, setAppReady] = useState(false);
+  const [rescheduleHabitId, setRescheduleHabitId] = useState<string | null>(null);
 
   useEffect(() => {
     SplashScreen.hideAsync().catch(() => {});
@@ -61,28 +62,43 @@ export default function RootLayout() {
       setAppReady(true);
     }
     notifee.getInitialNotification().then(async (initial) => {
-      if (initial?.pressAction?.id === 'default') {
-        const habitId = initial.notification.data?.habitId;
-        if (habitId) {
-          try {
-            const { dbReady } = await import('@/db/database');
-            await dbReady;
-            const { getHabitById } = await import('@/db/habits');
-            const habit = await getHabitById(Number(habitId));
-            if (habit && habit.progressType !== 'check') {
-              // build stack: home -> details -> goal so back goes goal->details->home
-              router.replace('/(tabs)');
-              router.navigate({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } });
-            } else {
-              router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
-            }
-          } catch {
+      const actionId = initial?.pressAction?.id;
+      const habitId = initial?.notification?.data?.habitId;
+      if (actionId === 'reschedule' && habitId) {
+        console.log('[InitialNotification] reschedule action, habitId:', habitId);
+        router.navigate({
+          pathname: '/habit/[id]',
+          params: { id: habitId.toString(), reschedule: '1' },
+        });
+      } else if (actionId === 'default' && habitId) {
+        console.log('[InitialNotification] default press, habitId:', habitId);
+        try {
+          const { dbReady } = await import('@/db/database');
+          await dbReady;
+          const { getHabitById } = await import('@/db/habits');
+          const habit = await getHabitById(Number(habitId));
+          if (habit && habit.progressType !== 'check') {
+            // build stack: home -> details -> goal so back goes goal->details->home
+            router.replace('/(tabs)');
+            router.navigate({ pathname: '/habit/[id]/goal', params: { id: habitId.toString() } });
+          } else {
             router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
           }
+        } catch {
+          router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
         }
       }
     });
   }, [fontsLoaded, fontError, hydrated]);
+
+  // useEffect(() => {
+  //   if (!appReady || !rescheduleHabitId) return;
+  //   router.navigate({
+  //     pathname: '/habit/[id]',
+  //     params: { id: rescheduleHabitId, reschedule: '1' },
+  //   });
+  //   setRescheduleHabitId(null);
+  // }, [appReady, rescheduleHabitId]);
 
   useEffect(() => {
     // Sequenced startup: nothing queries before the single connection is ready.
@@ -98,14 +114,9 @@ export default function RootLayout() {
             ['pending_reschedule_habit_id']
           );
           if (row?.value) {
+            console.log('[Startup] pending_reschedule consumed, habitId:', row.value);
             db.runSync(`DELETE FROM app_settings WHERE key = ?`, ['pending_reschedule_habit_id']);
-            const hasCompletedOnboarding = useStore.getState().hasCompletedOnboarding;
-            if (hasCompletedOnboarding) {
-              router.navigate({
-                pathname: '/habit/[id]',
-                params: { id: row.value, reschedule: '1' },
-              });
-            }
+            setRescheduleHabitId(row.value);
           }
         } catch {}
         // One-time migration: re-sync all reminder habits to pre-booked one-shot triggers
@@ -169,19 +180,24 @@ export default function RootLayout() {
         type === EventType.TRIGGER_NOTIFICATION_CREATED &&
         (detail.notification as any)?.data?.type === 'timer_complete'
       ) {
+        console.log('[Foreground] trigger timer_complete');
         useFocusStore.getState().loadActiveSession();
         return;
       }
       if (type === EventType.ACTION_PRESS && detail.pressAction?.id) {
         const actionId = detail.pressAction.id;
         if (actionId === 'pause') {
+          console.log('[Foreground] action: pause');
           useFocusStore.getState().pauseSession();
         } else if (actionId === 'resume') {
+          console.log('[Foreground] action: resume');
           useFocusStore.getState().resumeSession();
         } else if (actionId === 'stop') {
+          console.log('[Foreground] action: stop');
           useFocusStore.getState().stopSession();
         } else if (actionId === 'mark_completed') {
           const habitId = detail.notification?.data?.habitId;
+          console.log('[Foreground] action: mark_completed, habitId:', habitId);
           if (habitId) {
             handleMarkCompletedAction(
               parseInt(habitId as string, 10),
@@ -192,6 +208,7 @@ export default function RootLayout() {
           }
         } else if (actionId === 'reschedule') {
           const habitId = detail.notification?.data?.habitId;
+          console.log('[Foreground] action: reschedule, habitId:', habitId);
           if (habitId) {
             if (detail.notification?.id)
               notifee.cancelNotification(detail.notification.id).catch(() => {});
@@ -202,6 +219,7 @@ export default function RootLayout() {
           }
         } else if (actionId === 'start_timer') {
           const habitId = detail.notification?.data?.habitId;
+          console.log('[Foreground] action: start_timer, habitId:', habitId);
           if (habitId) {
             handleStartTimerAction(parseInt(habitId as string, 10), detail.notification?.id).then(
               () => {
@@ -213,6 +231,7 @@ export default function RootLayout() {
         }
       } else if (type === EventType.PRESS && detail.pressAction?.id === 'default') {
         const habitId = detail.notification?.data?.habitId;
+        console.log('[Foreground] default press, habitId:', habitId);
         if (habitId) {
           (async () => {
             try {

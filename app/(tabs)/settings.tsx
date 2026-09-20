@@ -350,13 +350,10 @@ export default function Settings() {
             );
           } else {
             added++;
-            const newId = String(h.id);
-            idMap.set(newId, newId);
-            await db.runAsync(
-              `INSERT INTO habits (id, name, icon, progressType, time, reminder, strictMode, archived, goalMinutes, goalQty, unit, occurrence, createdAt)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            const result = await db.runAsync(
+              `INSERT INTO habits (name, icon, progressType, time, reminder, strictMode, archived, goalMinutes, goalQty, unit, occurrence, createdAt)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
-                newId,
                 h.name,
                 h.icon,
                 h.progressType,
@@ -371,23 +368,29 @@ export default function Settings() {
                 h.createdAt,
               ]
             );
+            const newId = String(result.lastInsertRowId);
+            idMap.set(String(h.id), newId);
           }
         }
 
-        for (const l of logsArr) {
-          const currentHabitId = idMap.get(String(l.habitId));
-          if (!currentHabitId) continue; // skip orphan logs
-          await db.runAsync(
-            `INSERT OR REPLACE INTO habit_logs (id, habitId, date, loggedMinutes, loggedQty, completed)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              l.id ?? null,
-              currentHabitId,
-              l.date,
-              l.loggedMinutes ?? null,
-              l.loggedQty ?? null,
-              l.completed ? 1 : 0,
-            ]
+        // Batch log inserts — one execAsync per 500 rows instead of N individual calls
+        const BATCH = 500;
+        const validLogs = logsArr
+          .map((l: any) => ({ l, hid: idMap.get(String(l.habitId)) }))
+          .filter((x: any) => x.hid);
+        for (let i = 0; i < validLogs.length; i += BATCH) {
+          const chunk = validLogs.slice(i, i + BATCH);
+          const values = chunk
+            .map(({ l, hid }: any) => {
+              const date = (l.date ?? '').replace(/'/g, "''");
+              const mins = l.loggedMinutes != null ? l.loggedMinutes : 'NULL';
+              const qty = l.loggedQty != null ? l.loggedQty : 'NULL';
+              const done = l.completed ? 1 : 0;
+              return `(${hid},'${date}',${mins},${qty},${done})`;
+            })
+            .join(',');
+          await db.execAsync(
+            `INSERT OR REPLACE INTO habit_logs (habitId, date, loggedMinutes, loggedQty, completed) VALUES ${values}`
           );
         }
 

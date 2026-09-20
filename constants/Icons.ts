@@ -37,6 +37,15 @@ export const HABIT_ICONS: HabitIconOption[] = [
   { name: 'medkit', color: '#10B981' },
   { name: 'sunny', color: '#F59E0B' },
   { name: 'create', color: '#6366F1' },
+  { name: 'balloon', color: '#EC4899' },
+  { name: 'ban', color: '#EF4444' },
+  { name: 'cart', color: '#10B981' },
+  { name: 'film', color: '#6366F1' },
+  { name: 'car', color: '#0EA5E9' },
+  { name: 'people', color: '#8B5CF6' },
+  { name: 'body', color: '#F59E0B' },
+  { name: 'call', color: '#10B981' },
+  { name: 'clipboard', color: '#64748B' },
 ];
 
 export function getIconColor(iconName: string): string {

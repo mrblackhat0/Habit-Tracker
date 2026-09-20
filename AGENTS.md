@@ -28,17 +28,17 @@ npx expo export -p android --no-bytecode  # production bundle check
 
 ## Path Alias & TS
 - `@/*` → `./*` (see `tsconfig.json:6`). `expo-router` + `tsconfigPaths` enabled, so prefer `@/` imports.
-- `extends: expo/tsconfig.base`, `strict: true`. Includes `.expo/types`, `expo-env.d.ts`, `nativewind-env.d.ts`.
+- `extends: expo/tsconfig.base`, `strict: true`. Includes `.expo/types`, `expo-env.d.ts`, `css-env.d.ts`, `nativewind-env.d.ts`.
 
 ## Routing & Structure
 - `app/(tabs)/` — Today (`index.tsx`), Analytics, Calendar, Settings. `app/habit/[id].tsx` + `app/habit/[id]/goal.tsx`, `app/addHabit.tsx`, `app/onboarding.tsx`, `app/archived.tsx`.
-- `db/` — `schema.ts` (`initDb`), `habits.ts`, `focus.ts` (active_session singleton, daily_totals). `store/` — `habitStore.ts`, `focusStore.ts`, `store.ts` (onboarding hydration). `services/` — `notificationService.ts`, `notifeeBackground.js` (must stay imported in `_layout.tsx` before use), `weeklyOverview.ts`.
+- `db/` — `schema.ts` (`initDb`), `habits.ts`, `focus.ts` (active_session singleton, daily_totals). `store/` — `habitStore.ts`, `focusStore.ts`, `store.ts` (onboarding hydration). `services/` — `notificationService.ts`, `notifeeBackground.js` (must stay imported in `index.js` before `expo-router/entry`), `weeklyOverview.ts`.
 - `components/` — 29 UI components (Reanimated, SVG rings).
 - `plugins/with-notification-icon.js` — `withDangerousMod` copies `assets/notification-icon/android/mipmap-*/ic_notification.png` → `android/app/src/main/res/{mipmap,drawable}-*/`. Requires prebuild to take effect.
 
 ## Styling
 - `global.css` (`@tailwind base/components/utilities`) injected via `babel.config.js` (`nativewind/babel`, `jsxImportSource: nativewind`) and `metro.config.js` `withNativeWind(config, {input: './global.css'})`.
-- `tailwind.config.js` content: `app/**/*.{js,ts,tsx}` + `components/**/*.{js,ts,tsx}` only — styles outside those globs are purged. Theme colors: `background #0D0D12`, `primary #6366F1`, `heatmap level0-4`.
+- `tailwind.config.js` content: `app/**/*.{js,ts,tsx}` + `components/**/*.{js,ts,tsx}` only — styles outside those globs are purged. Theme colors: `background #0D0D12`, `surface #1A1A24`, `border #2A2A35`, `primary #6366F1`, `secondary #94A3B8`, `text #F8FAFC`, `muted #6b7280`, `positive #10B981`, `warning #F59E0B`, `danger #F43F5E`, `info #0EA5E9`, `heatmap level0-4`.
 - `prettier-plugin-tailwindcss` + `tailwindAttributes: ['className']`. `printWidth 100`, `singleQuote true`.
 
 ## Metro & Babel Gotchas
@@ -50,12 +50,12 @@ npx expo export -p android --no-bytecode  # production bundle check
 - Schema columns added via migrations: `reminder`, `strictMode`, `archived` on `habits`. If you add a new column, follow the same try/catch `ALTER TABLE` pattern in `db/schema.ts`.
 - `app.json` plugin `expo-sqlite` required.
 
-## Notifications & Permissions (`app.json:57-68`)
-- Android permissions: `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE*`, `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`. Changing them requires prebuild.
+## Notifications & Permissions
+- Android permissions (`app.json:55-68`): `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE*`, `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `CAMERA`, `RECORD_AUDIO`. Changing them requires prebuild.
 - `userInterfaceStyle: dark`, `orientation: portrait`, scheme `habit-tracker`.
 
 ## EAS
-- `eas.json` — `development`/`preview` → `apk` internal, `production` autoIncrement. `projectId 56244fad-ca8c-464c-8ccf-e07da9123992`. `cli >=22.0.0`, `appVersionSource: remote`.
+- `eas.json` — `development`/`preview` → `apk` internal, `production` autoIncrement. `projectId c539cb3c-8161-4e85-a9ca-a76560b7ca7a`. `cli >=22.0.0`, `appVersionSource: remote`.
 
 ## Conventions
 - ESLint: `eslint-config-expo/flat`, ignores `dist/*`, disables `react-hooks/immutability|set-state-in-effect|purity`.

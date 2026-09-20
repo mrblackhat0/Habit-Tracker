@@ -12,6 +12,10 @@ web-build/
 # expo router
 expo-env.d.ts
 
+.agents/
+graphify-out/
+skills-lock.json
+habit-tracker-backup-*.json
 
 # ios
 # android

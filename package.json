@@ -11,21 +11,30 @@
     "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix && prettier \"**/*.{js,jsx,ts,tsx,json}\" --write",
     "web": "expo start --web"
   },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@notifee/react-native"
+        ]
+      }
+    }
+  },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
-    "@notifee/react-native": "^9.1.8",
+    "@notifee/react-native": "9.1.8",
     "@react-native-community/datetimepicker": "9.1.0",
-    "expo": "~57.0.23",
+    "expo": "~57.0.24",
     "expo-constants": "~57.0.17",
     "expo-dev-client": "~57.0.19",
     "expo-document-picker": "~57.0.2",
     "expo-file-system": "^57.0.6",
     "expo-font": "~57.0.3",
     "expo-haptics": "~57.0.3",
-    "expo-image-picker": "~57.0.18",
+    "expo-image-picker": "~57.0.19",
     "expo-linking": "~57.0.10",
-    "expo-router": "~57.0.21",
-    "expo-sharing": "~57.0.20",
+    "expo-router": "~57.0.22",
+    "expo-sharing": "~57.0.21",
     "expo-splash-screen": "~57.0.9",
     "expo-sqlite": "~57.0.3",
     "expo-system-ui": "~57.0.4",

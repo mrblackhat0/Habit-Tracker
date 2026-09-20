@@ -1,5 +1,14 @@
 import { useLocalSearchParams, router, Stack } from 'expo-router';
-import { View, Text, Pressable, ScrollView, Platform, ActivityIndicator, ToastAndroid } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  ScrollView,
+  Platform,
+  ActivityIndicator,
+  ToastAndroid,
+  BackHandler,
+} from 'react-native';
 import { useHabitStore } from '@/store/habitStore';
 import { getStreaks } from '@/db/habits';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -8,7 +17,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { getIconColor } from '@/constants/Icons';
 import { Colors, DataColors } from '@/constants/Colors';
-import {formatTime, toTitleCase} from '@/utils/utils';
+import { formatTime, toTitleCase } from '@/utils/utils';
 import MonthlyLogs from '@/components/MonthlyLogs';
 import HistoryBarChart from '@/components/HistoryBarChart';
 import ProgressThisWeek from '@/components/ProgressThisWeek';
@@ -21,7 +30,9 @@ export default function HabitDetailScreen() {
   const habit = useHabitStore((state) => state.habits.find((h) => h.id === habitId));
   const updateHabit = useHabitStore((state) => state.updateHabit);
   const toggleCompletion = useHabitStore((state) => state.toggleCompletion);
-  const isTodayDone = useHabitStore((state) => state.todayHabits.find((h) => h.id === habitId)?.done ?? false);
+  const isTodayDone = useHabitStore(
+    (state) => state.todayHabits.find((h) => h.id === habitId)?.done ?? false
+  );
   const isNavigatingRef = useRef(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
@@ -39,6 +50,17 @@ export default function HabitDetailScreen() {
         if (isFirstLoad) setIsLoadingData(false);
       });
   }, [habit?.id, habit?.occurrence, habitsVersion]);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!router.canGoBack()) {
+        router.replace({ pathname: '/(tabs)' });
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [habitId]);
 
   // open timepicker clock when coming from Reschedule action
   useEffect(() => {
@@ -116,160 +138,160 @@ export default function HabitDetailScreen() {
         ) : (
           <Animated.View entering={FadeIn.duration(300)}>
             {/* 1. Icon + Habit Name + Subtitle Card */}
-        <View className="mb-4 flex-row items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sm">
-          <View
-            className="h-14 w-14 items-center justify-center rounded-2xl border border-border"
-            style={{ backgroundColor: `${getIconColor(habit.icon)}25` }}>
-            <Ionicons name={habit.icon as any} size={28} color={getIconColor(habit.icon)} />
-          </View>
-          <View className="flex-1">
-            <Text className="text-xl font-bold text-text">{toTitleCase(habit.name)}</Text>
-            <Text className="mt-1 text-xs text-textMuted">
-              {frequencyText} {goalSubtext ? `• ${goalSubtext}` : ''}
-            </Text>
-          </View>
-        </View>
-
-        {/* 2. Stat Row: Current Streak & Best Streak */}
-        <View className="mb-4 flex-row items-center justify-between rounded-2xl border border-border bg-surface p-4 shadow-sm">
-          <View className="flex-1 flex-row items-center gap-3 border-r border-border pr-2">
-            <Text className="text-2xl">🔥</Text>
-            <View>
-              <Text className="text-[10px] font-semibold uppercase tracking-wider text-textMuted">
-                Current Streak
-              </Text>
-              <Text className="mt-0.5 text-base font-bold text-text">{currentStreak} days</Text>
-            </View>
-          </View>
-
-          <View className="flex-1 flex-row items-center gap-3 pl-4">
-            <Text className="text-2xl">🏆</Text>
-            <View>
-              <Text className="text-[10px] font-semibold uppercase tracking-wider text-textMuted">
-                Best Streak
-              </Text>
-              <Text className="mt-0.5 text-base font-bold text-text">{bestStreak} days</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* 3. Progress — This Week */}
-        <ProgressThisWeek habit={habit} />
-
-        <View className="mb-4 flex-1 rounded-2xl border border-border bg-surface shadow-sm">
-          {/* 4. Reminder Row */}
-          <View className="flex-row items-center justify-between p-4 shadow-sm">
-            <Pressable
-              onPress={() => {
-                requestNotificationPermission().catch(() => {});
-                if (!habit.time) {
-                  const defaultTime = new Date().toISOString();
-                  updateHabit(habit.id, { time: defaultTime, reminder: true });
-                }
-                setShowTimePicker(true);
-              }}
-              className="justify-b flex-1 flex-row items-center gap-3 pr-3 active:opacity-80">
-              <View className="flex-row items-center gap-3">
-                <Ionicons
-                  name={habit.reminder ? 'notifications' : 'notifications-off-outline'}
-                  size={20}
-                  color={habit.reminder ? Colors.primary : Colors.secondary}
-                />
-                <Text className="text-base font-semibold text-text">Reminder</Text>
+            <View className="mb-4 flex-row items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sm">
+              <View
+                className="h-14 w-14 items-center justify-center rounded-2xl border border-border"
+                style={{ backgroundColor: `${getIconColor(habit.icon)}25` }}>
+                <Ionicons name={habit.icon as any} size={28} color={getIconColor(habit.icon)} />
               </View>
-              {habit.time ? (
-                <View className="flex-row items-center gap-1.5 rounded-xl border border-border/60 bg-background px-2.5 py-1">
-                  <Ionicons name="time-outline" size={14} color={Colors.secondary} />
-                  <Text
-                    className={`text-xs font-semibold ${
-                      habit.reminder ? 'text-text' : 'text-textMuted opacity-70'
-                    }`}>
-                    {formatTime(habit.time)}
-                  </Text>
-                </View>
-              ) : (
-                <Text className="text-xs font-semibold text-textMuted">Set time</Text>
-              )}
-            </Pressable>
+              <View className="flex-1">
+                <Text className="text-xl font-bold text-text">{toTitleCase(habit.name)}</Text>
+                <Text className="mt-1 text-xs text-textMuted">
+                  {frequencyText} {goalSubtext ? `• ${goalSubtext}` : ''}
+                </Text>
+              </View>
+            </View>
 
-            <AnimatedSwitch
-              value={habit.reminder}
-              onValueChange={(enabled) => {
-                if (enabled) {
-                  requestNotificationPermission().catch(() => {});
-                  if (!habit.time) {
+            {/* 2. Stat Row: Current Streak & Best Streak */}
+            <View className="mb-4 flex-row items-center justify-between rounded-2xl border border-border bg-surface p-4 shadow-sm">
+              <View className="flex-1 flex-row items-center gap-3 border-r border-border pr-2">
+                <Text className="text-2xl">🔥</Text>
+                <View>
+                  <Text className="text-[10px] font-semibold uppercase tracking-wider text-textMuted">
+                    Current Streak
+                  </Text>
+                  <Text className="mt-0.5 text-base font-bold text-text">{currentStreak} days</Text>
+                </View>
+              </View>
+
+              <View className="flex-1 flex-row items-center gap-3 pl-4">
+                <Text className="text-2xl">🏆</Text>
+                <View>
+                  <Text className="text-[10px] font-semibold uppercase tracking-wider text-textMuted">
+                    Best Streak
+                  </Text>
+                  <Text className="mt-0.5 text-base font-bold text-text">{bestStreak} days</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* 3. Progress — This Week */}
+            <ProgressThisWeek habit={habit} />
+
+            <View className="mb-4 flex-1 rounded-2xl border border-border bg-surface shadow-sm">
+              {/* 4. Reminder Row */}
+              <View className="flex-row items-center justify-between p-4 shadow-sm">
+                <Pressable
+                  onPress={() => {
+                    requestNotificationPermission().catch(() => {});
+                    if (!habit.time) {
+                      const defaultTime = new Date().toISOString();
+                      updateHabit(habit.id, { time: defaultTime, reminder: true });
+                    }
                     setShowTimePicker(true);
-                  } else {
-                    updateHabit(habit.id, { reminder: true });
+                  }}
+                  className="justify-b flex-1 flex-row items-center gap-3 pr-3 active:opacity-80">
+                  <View className="flex-row items-center gap-3">
+                    <Ionicons
+                      name={habit.reminder ? 'notifications' : 'notifications-off-outline'}
+                      size={20}
+                      color={habit.reminder ? Colors.primary : Colors.secondary}
+                    />
+                    <Text className="text-base font-semibold text-text">Reminder</Text>
+                  </View>
+                  {habit.time ? (
+                    <View className="flex-row items-center gap-1.5 rounded-xl border border-border/60 bg-background px-2.5 py-1">
+                      <Ionicons name="time-outline" size={14} color={Colors.secondary} />
+                      <Text
+                        className={`text-xs font-semibold ${
+                          habit.reminder ? 'text-text' : 'text-textMuted opacity-70'
+                        }`}>
+                        {formatTime(habit.time)}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text className="text-xs font-semibold text-textMuted">Set time</Text>
+                  )}
+                </Pressable>
+
+                <AnimatedSwitch
+                  value={habit.reminder}
+                  onValueChange={(enabled) => {
+                    if (enabled) {
+                      requestNotificationPermission().catch(() => {});
+                      if (!habit.time) {
+                        setShowTimePicker(true);
+                      } else {
+                        updateHabit(habit.id, { reminder: true });
+                      }
+                    } else {
+                      setShowTimePicker(false);
+                      updateHabit(habit.id, { reminder: false });
+                    }
+                  }}
+                />
+              </View>
+
+              {showTimePicker && (
+                <DateTimePicker
+                  value={
+                    habit.time && !isNaN(new Date(habit.time).getTime())
+                      ? new Date(habit.time)
+                      : new Date()
                   }
-                } else {
-                  setShowTimePicker(false);
-                  updateHabit(habit.id, { reminder: false });
-                }
-              }}
-            />
-          </View>
+                  mode="time"
+                  is24Hour={false}
+                  display="clock"
+                  onValueChange={(_, selectedDate) => {
+                    setShowTimePicker(Platform.OS === 'ios');
+                    if (selectedDate) {
+                      updateHabit(habit.id, {
+                        time: selectedDate.toISOString(),
+                        reminder: true,
+                      });
+                    }
+                  }}
+                  onDismiss={() => setShowTimePicker(false)}
+                />
+              )}
 
-          {showTimePicker && (
-            <DateTimePicker
-              value={
-                habit.time && !isNaN(new Date(habit.time).getTime())
-                  ? new Date(habit.time)
-                  : new Date()
-              }
-              mode="time"
-              is24Hour={false}
-              display="clock"
-              onValueChange={(_, selectedDate) => {
-                setShowTimePicker(Platform.OS === 'ios');
-                if (selectedDate) {
-                  updateHabit(habit.id, {
-                    time: selectedDate.toISOString(),
-                    reminder: true,
-                  });
-                }
-              }}
-              onDismiss={() => setShowTimePicker(false)}
-            />
-          )}
+              {/* 5. Goal Row (duration/quantity habits only) */}
+              {habit.progressType !== 'check' && (
+                <>
+                  {/* Divider */}
+                  <View className="w-full border-b-[1px] border-[#2A2A35]" />
+                  <Pressable
+                    onPress={navigateToGoal}
+                    className="flex-row items-center justify-between rounded-2xl p-4 shadow-sm active:opacity-80">
+                    <View className="flex-row items-center gap-3">
+                      <Ionicons name="location-outline" size={20} color={DataColors.danger} />
+                      <Text className="text-base font-semibold text-text">Goal</Text>
+                    </View>
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-sm font-semibold text-textMuted">
+                        {habit.progressType === 'duration'
+                          ? `${habit.goalMinutes ?? 0} min per day`
+                          : habit.progressType === 'quantity'
+                            ? `${habit.goalQty ?? 0} ${habit.unit || ''} per day`
+                            : ''}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={18} color={Colors.secondary} />
+                    </View>
+                  </Pressable>
+                </>
+              )}
+            </View>
 
-          {/* 5. Goal Row (duration/quantity habits only) */}
-          {habit.progressType !== 'check' && (
-            <>
-              {/* Divider */}
-              <View className="w-full border-b-[1px] border-[#2A2A35]" />
-              <Pressable
-                onPress={navigateToGoal}
-                className="flex-row items-center justify-between rounded-2xl p-4 shadow-sm active:opacity-80">
-                <View className="flex-row items-center gap-3">
-                  <Ionicons name="location-outline" size={20} color={DataColors.danger} />
-                  <Text className="text-base font-semibold text-text">Goal</Text>
-                </View>
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-sm font-semibold text-textMuted">
-                    {habit.progressType === 'duration'
-                      ? `${habit.goalMinutes ?? 0} min per day`
-                      : habit.progressType === 'quantity'
-                        ? `${habit.goalQty ?? 0} ${habit.unit || ''} per day`
-                        : ''}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color={Colors.secondary} />
-                </View>
-              </Pressable>
-            </>
-          )}
-        </View>
-
-        {/* 6. History Bar Chart (Last section on screen) */}
-        {habit.progressType === 'check' ? (
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            className="flex-1 bg-background px-4 pt-6">
-            <MonthlyLogs habit={habit} />
-          </ScrollView>
-        ) : (
-          <HistoryBarChart habit={habit} />
-        )}
+            {/* 6. History Bar Chart (Last section on screen) */}
+            {habit.progressType === 'check' ? (
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                className="flex-1 bg-background px-4 pt-6">
+                <MonthlyLogs habit={habit} />
+              </ScrollView>
+            ) : (
+              <HistoryBarChart habit={habit} />
+            )}
           </Animated.View>
         )}
 
@@ -285,7 +307,9 @@ export default function HabitDetailScreen() {
             }
           }}
           className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl py-4 shadow-sm ${
-            isTodayDone ? 'bg-positive opacity-60 shadow-positive/30' : 'border border-border bg-surface active:opacity-90'
+            isTodayDone
+              ? 'bg-positive opacity-60 shadow-positive/30'
+              : 'border border-border bg-surface active:opacity-90'
           }`}>
           <Ionicons
             name={isTodayDone ? 'checkmark-circle' : 'checkmark-circle-outline'}

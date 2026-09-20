@@ -30,6 +30,7 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
     type === EventType.TRIGGER_NOTIFICATION_CREATED &&
     detail.notification?.data?.type === 'timer_complete'
   ) {
+    console.log('[Background] trigger timer_complete');
     try {
       const session = getActiveSession();
       if (!session || session.mode !== 'timer' || !session.targetGoalMs) return;
@@ -49,6 +50,7 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
   }
   if (type === EventType.PRESS && detail.pressAction?.id === 'default') {
     const habitId = detail.notification?.data?.habitId;
+    console.log('[Background] default press, habitId:', habitId);
     if (habitId) {
       try {
         const habit = await getHabitById(Number(habitId));
@@ -72,18 +74,21 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 
   try {
     if (actionId === 'pause') {
+      console.log('[Background] action: pause');
       const paused = pauseActiveSession();
       if (paused) {
         const habit = await getHabitById(paused.habitId);
         if (habit) await updateSessionNotification(paused, habit);
       }
     } else if (actionId === 'resume') {
+      console.log('[Background] action: resume');
       const resumed = resumeActiveSession();
       if (resumed) {
         const habit = await getHabitById(resumed.habitId);
         if (habit) await updateSessionNotification(resumed, habit);
       }
     } else if (actionId === 'stop') {
+      console.log('[Background] action: stop');
       const result = resolveActiveSession(); // { habitId, durationMs } | null
       if (result) {
         const habit = await getHabitById(result.habitId);
@@ -100,27 +105,37 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
       }
     } else if (actionId === 'mark_completed') {
       const habitId = detail.notification?.data?.habitId;
+      console.log('[Background] action: mark_completed, habitId:', habitId);
       if (habitId) {
         await handleMarkCompletedAction(parseInt(habitId, 10), detail.notification?.id);
       }
     } else if (actionId === 'reschedule') {
-      // Cancel so there's no stale notification, persist intent for foreground consumption
       const habitId = detail.notification?.data?.habitId;
-      const notificationId = detail.notification?.id;
-      if (notificationId) {
-        notifee.cancelNotification(notificationId).catch(() => {});
-      }
+      console.log('[Background] action: reschedule, habitId:', habitId);
       if (habitId) {
-        try {
-          const { db } = require('@/db/habits');
-          db.runSync(
-            `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-            ['pending_reschedule_habit_id', String(habitId)]
-          );
-        } catch {}
+        if (detail.notification?.id)
+          notifee.cancelNotification(detail.notification.id).catch(() => {});
+        router.navigate({
+          pathname: '/habit/[id]',
+          params: { id: String(habitId), reschedule: '1' },
+        });
       }
+      // const notificationId = detail.notification?.id;
+      // if (notificationId) {
+      //   notifee.cancelNotification(notificationId).catch(() => {});
+      // }
+      // if (habitId) {
+      //   try {
+      //     const { db } = require('@/db/habits');
+      //     db.runSync(
+      //       `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      //       ['pending_reschedule_habit_id', String(habitId)]
+      //     );
+      //   } catch {}
+      // }
     } else if (actionId === 'start_timer') {
       const habitId = detail.notification?.data?.habitId;
+      console.log('[Background] action: start_timer, habitId:', habitId);
       if (habitId) {
         await handleStartTimerAction(parseInt(habitId, 10), detail.notification?.id);
       }

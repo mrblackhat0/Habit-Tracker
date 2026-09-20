@@ -153,7 +153,8 @@ const AddHabit = () => {
       <ScrollView
         className="flex-1 px-5 pt-4"
         contentContainerStyle={{ paddingTop: 20, paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled">
         {/* Name */}
         <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-textMuted">
           Habit name
@@ -177,8 +178,8 @@ const AddHabit = () => {
           className="mb-6"
           contentContainerStyle={{ paddingRight: 16 }}>
           <View className="gap-3">
-            {[0, 1].map((row) => {
-              const perRow = Math.ceil(ICONS.length / 2);
+            {[0, 1, 2].map((row) => {
+              const perRow = Math.ceil(ICONS.length / 3);
               const rowIcons = ICONS.slice(row * perRow, (row + 1) * perRow);
               return (
                 <View key={row} className="flex-row gap-3">

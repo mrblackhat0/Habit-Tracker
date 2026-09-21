@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -69,6 +69,8 @@ export default function Settings() {
   const [importVisible, setImportVisible] = useState(false);
   const [importText, setImportText] = useState('');
   const [importing, setImporting] = useState(false);
+  const importDataRef = useRef<any>(null);
+  const [importSummary, setImportSummary] = useState<{ name: string; sizeKB: number; habits: number; logs: number } | null>(null);
   const [imageActionVisible, setImageActionVisible] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
@@ -170,7 +172,7 @@ export default function Settings() {
         logs,
         settings: settingsRows,
       };
-      const json = JSON.stringify(payload, null, 2);
+      const json = JSON.stringify(payload);
       const fileName = `habit-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
       const dir = (FileSystem as any).cacheDirectory ?? (FileSystem as any).documentDirectory ?? '';
       const fileUri = `${dir}${fileName}`;
@@ -239,7 +241,6 @@ export default function Settings() {
       if (res.canceled || !res.assets?.[0]?.uri) return;
       const uri = res.assets[0].uri;
       let content = '';
-      // expo-file-system legacy + new File API fallback
       try {
         // @ts-ignore legacy
         if ((FileSystem as any).readAsStringAsync)
@@ -259,8 +260,24 @@ export default function Settings() {
         });
         return;
       }
-      setImportText(content);
-      triggerHaptic('light');
+      try {
+        const parsed = JSON.parse(content);
+        const habitsArr = parsed.habits ?? parsed.habitsData ?? [];
+        const logsArr = parsed.logs ?? [];
+        const fileName = res.assets[0].name ?? uri.split('/').pop() ?? 'backup.json';
+        const sizeKB = Math.round(content.length / 1024);
+        importDataRef.current = parsed;
+        setImportSummary({ name: fileName, sizeKB, habits: habitsArr.length, logs: logsArr.length });
+        setImportText('');
+        triggerHaptic('light');
+      } catch {
+        showAlert({
+          title: 'Invalid JSON',
+          message: 'The file does not contain valid JSON. Please check the file.',
+          type: 'error',
+          primaryText: 'OK',
+        });
+      }
     } catch (e: any) {
       showAlert({
         title: 'Pick failed',
@@ -272,31 +289,34 @@ export default function Settings() {
   }, [showAlert, triggerHaptic]);
 
   const handleImportConfirm = useCallback(async () => {
-    const raw = importText.trim();
-    if (!raw) {
-      showAlert({
-        title: 'Nothing to import',
-        message: 'Paste the JSON you exported first.',
-        type: 'warning',
-        primaryText: 'OK',
-      });
-      return;
-    }
-    let data: any;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      showAlert({
-        title: 'Invalid JSON',
-        message: 'Could not parse — make sure you pasted the full export.',
-        type: 'error',
-        primaryText: 'OK',
-      });
-      return;
+    let data = importDataRef.current;
+    if (!data) {
+      const raw = importText.trim();
+      if (!raw) {
+        showAlert({
+          title: 'Nothing to import',
+          message: 'Paste the JSON you exported first or choose a file.',
+          type: 'warning',
+          primaryText: 'OK',
+        });
+        return;
+      }
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        showAlert({
+          title: 'Invalid JSON',
+          message: 'Could not parse — make sure you pasted the full export.',
+          type: 'error',
+          primaryText: 'OK',
+        });
+        return;
+      }
     }
     const habitsArr: any[] = data.habits ?? data.habitsData ?? [];
     const logsArr: any[] = data.logs ?? [];
     const settingsArr: any[] = data.settings ?? [];
+    if (__DEV__) console.log('[TEST] parsed via', importDataRef.current ? 'ref' : 'text', 'habitsArr=', habitsArr.length, 'logsArr=', logsArr.length, 'settings=', settingsArr.length, 't=', Date.now());
     if (!Array.isArray(habitsArr) || habitsArr.length === 0) {
       showAlert({
         title: 'No habits found',
@@ -324,11 +344,21 @@ export default function Settings() {
       const idMap = new Map<string, string>();
       let matched = 0;
       let added = 0;
+      let skippedHabits = 0;
+      let skippedLogs = 0;
 
       await db.execAsync('BEGIN TRANSACTION');
+      if (__DEV__) console.log('[TEST] BEGIN TRANSACTION t=', Date.now());
       try {
         for (const h of habitsArr) {
-          const key = `${h.name ?? ''}||${h.occurrence ?? ''}||${h.time ?? ''}`;
+          const name = (h.name ?? '').toString().trim();
+          if (!name) { skippedHabits++; continue; }
+          const icon = h.icon ?? 'star';
+          const progressType = ['check', 'duration', 'quantity'].includes(h.progressType) ? h.progressType : 'check';
+          const occurrence = h.occurrence ?? '1,2,3,4,5,6,7';
+          const createdAt = h.createdAt ?? new Date().toISOString();
+
+          const key = `${name}||${occurrence}||${h.time ?? ''}`;
           const existingId = existingMap.get(key);
           if (existingId) {
             matched++;
@@ -337,8 +367,8 @@ export default function Settings() {
               `UPDATE habits SET icon=?, progressType=?, reminder=?, strictMode=?, archived=?, goalMinutes=?, goalQty=?, unit=?
                WHERE id=?`,
               [
-                h.icon,
-                h.progressType,
+                icon,
+                progressType,
                 h.reminder ? 1 : 0,
                 h.strictMode ? 1 : 0,
                 h.archived ? 1 : 0,
@@ -354,9 +384,9 @@ export default function Settings() {
               `INSERT INTO habits (name, icon, progressType, time, reminder, strictMode, archived, goalMinutes, goalQty, unit, occurrence, createdAt)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
-                h.name,
-                h.icon,
-                h.progressType,
+                name,
+                icon,
+                progressType,
                 h.time ?? null,
                 h.reminder ? 1 : 0,
                 h.strictMode ? 1 : 0,
@@ -364,34 +394,41 @@ export default function Settings() {
                 h.goalMinutes ?? null,
                 h.goalQty ?? null,
                 h.unit ?? null,
-                h.occurrence,
-                h.createdAt,
+                occurrence,
+                createdAt,
               ]
             );
             const newId = String(result.lastInsertRowId);
             idMap.set(String(h.id), newId);
           }
         }
+        if (__DEV__) console.log('[TEST] habits loop done matched=', matched, 'added=', added, 'skipped=', skippedHabits, 't=', Date.now());
 
         // Batch log inserts — one execAsync per 500 rows instead of N individual calls
         const BATCH = 500;
+        const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
         const validLogs = logsArr
-          .map((l: any) => ({ l, hid: idMap.get(String(l.habitId)) }))
-          .filter((x: any) => x.hid);
+          .filter((l: any) => {
+            const hid = idMap.get(String(l.habitId));
+            if (!hid) { skippedLogs++; return false; }
+            if (!l.date || !DATE_RE.test(String(l.date))) { skippedLogs++; return false; }
+            return true;
+          })
+          .map((l: any) => {
+            const hid = Number(idMap.get(String(l.habitId)));
+            const mins = Number.isFinite(Number(l.loggedMinutes)) && l.loggedMinutes != null ? Math.trunc(Number(l.loggedMinutes)) : 'NULL';
+            const qty = Number.isFinite(Number(l.loggedQty)) && l.loggedQty != null ? Math.trunc(Number(l.loggedQty)) : 'NULL';
+            const done = l.completed ? 1 : 0;
+            const date = String(l.date).replace(/'/g, "''");
+            return `(${hid},'${date}',${mins},${qty},${done})`;
+          })
+          .filter((v: any) => v.startsWith('(') && Number.isInteger(Number(v.slice(1).split(',')[0])));
         for (let i = 0; i < validLogs.length; i += BATCH) {
           const chunk = validLogs.slice(i, i + BATCH);
-          const values = chunk
-            .map(({ l, hid }: any) => {
-              const date = (l.date ?? '').replace(/'/g, "''");
-              const mins = l.loggedMinutes != null ? l.loggedMinutes : 'NULL';
-              const qty = l.loggedQty != null ? l.loggedQty : 'NULL';
-              const done = l.completed ? 1 : 0;
-              return `(${hid},'${date}',${mins},${qty},${done})`;
-            })
-            .join(',');
           await db.execAsync(
-            `INSERT OR REPLACE INTO habit_logs (habitId, date, loggedMinutes, loggedQty, completed) VALUES ${values}`
+            `INSERT OR REPLACE INTO habit_logs (habitId, date, loggedMinutes, loggedQty, completed) VALUES ${chunk.join(',')}`
           );
+          if (__DEV__) console.log('[TEST] logs batch i=', i, 'chunk=', chunk.length, 'total=', validLogs.length, 'skipped=', skippedLogs, 't=', Date.now());
         }
 
         if (Array.isArray(settingsArr) && settingsArr.length) {
@@ -405,6 +442,7 @@ export default function Settings() {
           }
         }
         await db.execAsync('COMMIT');
+        if (__DEV__) console.log('[TEST] COMMIT t=', Date.now());
       } catch (e) {
         try {
           await db.execAsync('ROLLBACK');
@@ -412,21 +450,27 @@ export default function Settings() {
         throw e;
       }
       await useHabitStore.getState().loadHabits();
+      if (__DEV__) console.log('[TEST] loadHabits done t=', Date.now());
       await hydrate();
+      if (__DEV__) console.log('[TEST] hydrate done t=', Date.now());
       const { syncHabitReminder } = await import('@/services/notificationService');
       for (const h of useHabitStore.getState().habits) {
         if (h.reminder && h.time) {
           try {
             await syncHabitReminder(h.id, h.name, h.time, h.occurrence, h.reminder);
+            if (__DEV__) console.log('[TEST] syncHabitReminder done id=', h.id, 't=', Date.now());
           } catch {}
         }
       }
       triggerHaptic('medium');
       setImportVisible(false);
       setImportText('');
+      importDataRef.current = null;
+      setImportSummary(null);
+      const skipMsg = (skippedHabits > 0 || skippedLogs > 0) ? ` (${skippedHabits} habits and ${skippedLogs} logs skipped)` : '';
       showAlert({
         title: 'Restored',
-        message: `${matched} updated, ${added} new habits imported.`,
+        message: `${matched} updated, ${added} new habits imported${skipMsg}.`,
         type: 'success',
         primaryText: 'Great!',
       });
@@ -438,6 +482,7 @@ export default function Settings() {
         primaryText: 'OK',
       });
     } finally {
+      if (__DEV__) console.log('[TEST] finally setImporting(false) t=', Date.now());
       setImporting(false);
     }
   }, [importText, hydrate, triggerHaptic, showAlert]);
@@ -464,6 +509,11 @@ export default function Settings() {
             onPrimary: async () => {
               try {
                 await clearAll();
+                try {
+                  const { default: notifee } = await import('@notifee/react-native');
+                  await notifee.cancelAllNotifications();
+                  await notifee.cancelTriggerNotifications();
+                } catch {}
                 triggerHaptic('heavy');
                 showAlert({
                   title: 'Cleared',
@@ -887,15 +937,15 @@ export default function Settings() {
         visible={importVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setImportVisible(false)}>
-        <TouchableWithoutFeedback onPress={() => setImportVisible(false)}>
+        onRequestClose={() => { importDataRef.current = null; setImportSummary(null); setImportVisible(false); }}>
+        <TouchableWithoutFeedback onPress={() => { importDataRef.current = null; setImportSummary(null); setImportVisible(false); }}>
           <View className="flex-1 justify-center bg-black/60 px-5">
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
               <View className="rounded-3xl border border-border bg-surface p-5">
                 <View className="mb-3 flex-row items-center justify-between">
                   <Text className="text-lg font-bold text-text">Import backup</Text>
                   <Pressable
-                    onPress={() => setImportVisible(false)}
+                    onPress={() => { importDataRef.current = null; setImportSummary(null); setImportVisible(false); }}
                     hitSlop={8}
                     className="h-8 w-8 items-center justify-center rounded-full border border-border bg-background">
                     <Ionicons name="close" size={18} color={Colors.secondary} />
@@ -913,22 +963,39 @@ export default function Settings() {
                     Choose file from storage
                   </Text>
                 </Pressable>
-                <View className="min-h-[180px] rounded-2xl border border-border bg-background p-2">
-                  <TextInput
-                    value={importText}
-                    onChangeText={setImportText}
-                    placeholder='{"habits": [...], "logs": [...]}'
-                    placeholderTextColor={Colors.textMuted}
-                    multiline
-                    textAlignVertical="top"
-                    style={{ flex: 1, minHeight: 160, color: Colors.text, fontSize: 12 }}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
+                {importSummary ? (
+                  <View className="mb-2 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                    <View className="flex-row items-center justify-between mb-2">
+                      <Text className="text-sm font-bold text-text" numberOfLines={1}>{importSummary.name}</Text>
+                      <Pressable
+                        onPress={() => { importDataRef.current = null; setImportSummary(null); }}
+                        hitSlop={6}
+                        className="ml-2 h-6 w-6 items-center justify-center rounded-full bg-danger/10">
+                        <Ionicons name="close" size={12} color={DataColors.danger} />
+                      </Pressable>
+                    </View>
+                    <Text className="text-xs text-secondary">
+                      {importSummary.sizeKB} KB · {importSummary.habits} habits · {importSummary.logs} logs
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="min-h-[180px] rounded-2xl border border-border bg-background p-2">
+                    <TextInput
+                      value={importText}
+                      onChangeText={setImportText}
+                      placeholder='{"habits": [...], "logs": [...]}'
+                      placeholderTextColor={Colors.textMuted}
+                      multiline
+                      textAlignVertical="top"
+                      style={{ flex: 1, minHeight: 160, color: Colors.text, fontSize: 12 }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
+                )}
                 <View className="mt-4 flex-row gap-3">
                   <Pressable
-                    onPress={() => setImportVisible(false)}
+                    onPress={() => { importDataRef.current = null; setImportSummary(null); setImportVisible(false); }}
                     className="flex-1 items-center justify-center rounded-2xl border border-secondary/10 bg-secondary/5 py-3.5 active:opacity-70">
                     <Text className="text-sm font-semibold text-secondary">Cancel</Text>
                   </Pressable>

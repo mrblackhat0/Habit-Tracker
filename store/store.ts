@@ -155,8 +155,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   hydrate: async () => {
     if (get()._hydrated) return;
+    const t0 = Date.now();
     const { dbReady } = await import('@/db/database');
     await dbReady;
+    if (__DEV__) console.log('[TEST] hydrate dbReady elapsed=', Date.now() - t0, 'ms t=', Date.now());
     try {
       const [
         userName,
@@ -194,6 +196,7 @@ export const useStore = create<AppState>((set, get) => ({
         hasCompletedOnboarding: onboarded === '1',
         _hydrated: true,
       });
+      if (__DEV__) console.log('[TEST] hydrate done elapsed=', Date.now() - t0, 'ms t=', Date.now());
     } catch {
       set({ _hydrated: true });
     }

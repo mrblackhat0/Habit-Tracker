@@ -152,7 +152,7 @@ export default function CalendarScreen() {
           <View className="mb-2 flex-row">
             {WEEKDAYS.map((w) => (
               <View key={w} className="flex-1 items-center py-1">
-                <Text className="text-base font-semibold text-secondary">{w}</Text>
+                <Text className="text-sm font-semibold text-secondary">{w}</Text>
               </View>
             ))}
           </View>
@@ -164,7 +164,7 @@ export default function CalendarScreen() {
               const isToday = ds === todayStr;
               const isSelected = ds === selected;
               return (
-                <View key={`${ds}-${idx}`} className="w-[14.28%] items-center py-1">
+                <View key={`${ds}-${idx}`} className="w-[14.28%] items-center py-2">
                   <Pressable
                     onPress={() => {
                       setSelected(ds);
@@ -173,7 +173,7 @@ export default function CalendarScreen() {
                         setDisplayDate(new Date(y, m - 1, 1));
                       }
                     }}
-                    className={`h-10 w-10 items-center justify-center rounded-full ${
+                    className={`h-8 w-8 items-center justify-center rounded-full ${
                       isSelected
                         ? 'bg-primary'
                         : isToday
@@ -181,7 +181,7 @@ export default function CalendarScreen() {
                           : ''
                     }`}>
                     <Text
-                      className={`text-lg ${
+                      className={`text-base ${
                         isSelected
                           ? 'font-bold text-white'
                           : isToday

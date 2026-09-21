@@ -46,7 +46,9 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
   loadHabits: async () => {
     const { dbReady } = await import('../db/database');
     await dbReady;
+    const t0 = Date.now();
     const [habits, todayHabits] = await Promise.all([getAllHabits(), getTodayHabitsWithLogs()]);
+    if (__DEV__) console.log('[TEST] loadHabits elapsed=', Date.now() - t0, 'ms habits=', habits.length, 'todayHabits=', todayHabits.length, 't=', Date.now());
     set({ habits, todayHabits, _habitsLoaded: true });
   },
 

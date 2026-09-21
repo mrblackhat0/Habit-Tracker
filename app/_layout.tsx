@@ -92,10 +92,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     // Sequenced startup: nothing queries before the single connection is ready.
+    if (__DEV__) console.log('[TEST] startup chain start t=', Date.now());
     dbReady
-      .then(() => useStore.getState().hydrate())
-      .then(() => useFocusStore.getState().loadActiveSession())
-      .catch((e) => console.warn('[Startup] dbReady chain', e));
+      .then(() => { if (__DEV__) console.log('[TEST] dbReady resolved t=', Date.now()); return useStore.getState().hydrate(); })
+      .then(() => { if (__DEV__) console.log('[TEST] hydrate resolved t=', Date.now()); return useFocusStore.getState().loadActiveSession(); })
+      .then(() => { if (__DEV__) console.log('[TEST] loadActiveSession resolved t=', Date.now()); })
+      .catch((e) => console.warn('[TEST] startup chain FAILED', e));
     // Warm notification channels in background so first timer start is instant
     initNotificationChannels().catch((e) => console.warn('[Startup] initNotificationChannels', e));
 

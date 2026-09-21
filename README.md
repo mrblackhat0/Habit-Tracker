@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./app_icon.png" width="120" height="120" alt="Habit Tracker Icon" />
+  <img src="../assets/app_icon.png" width="120" height="120" alt="Habit Tracker Icon" />
 </p>
 
 <h1 align="center">⚡ Habit-Tracker</h1>

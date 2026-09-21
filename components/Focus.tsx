@@ -163,7 +163,6 @@ export default function Focus({ habit }: FocusProps) {
     });
   }, [habit.id, todayStr, activeSession, habitsVersion]);
 
-
   const isCurrentHabitActive = activeSession?.habitId === habit.id;
   const isOtherHabitActive = Boolean(activeSession && activeSession.habitId !== habit.id);
 
@@ -171,7 +170,7 @@ export default function Focus({ habit }: FocusProps) {
   // Keyed on the boolean `isRunning` so it never fires during pause or stop.
   const isRunning = isCurrentHabitActive && activeSession?.status === 'running';
   useEffect(() => {
-    if (editedBaseMs) setIsUiReset(true)
+    if (editedBaseMs) setIsUiReset(true);
     if (!isRunning) {
       prevRemainingRef.current = null;
       prevSessionKeyRef.current = null;
@@ -307,12 +306,16 @@ export default function Focus({ habit }: FocusProps) {
   const fullGoalMs = selectedGoalMins * 60 * 1000;
   const progressPercent = useMemo(() => {
     if (mode === 'stopwatch' || fullGoalMs <= 0) return 0;
-    if (isUiReset || isCurrentHabitActive) {
-      return isCurrentHabitActive ? Math.min(100, Math.round((elapsedMs / targetGoalMs) * 100)) : 0;
+    if (isCurrentHabitActive) {
+      if (isUiReset) {
+        return Math.min(100, Math.round((elapsedMs / targetGoalMs) * 100));
+      }
+      return Math.min(100, Math.round(((todayLoggedMs + elapsedMs) / fullGoalMs) * 100));
     }
-    const totalAccumulated = todayLoggedMs + (isCurrentHabitActive ? elapsedMs : 0);
+    if (isUiReset) return 0;
+    const totalAccumulated = todayLoggedMs;
     return Math.min(100, Math.round((totalAccumulated / fullGoalMs) * 100));
-  }, [mode, fullGoalMs, isUiReset, isCurrentHabitActive, elapsedMs, targetGoalMs, todayLoggedMs]);
+  }, [mode, fullGoalMs, isUiReset, isCurrentHabitActive, elapsedMs, targetGoalMs, todayLoggedMs, tick]);
 
   // Animate ring: 100% = full ring, 0% = empty ring
   useEffect(() => {
@@ -501,11 +504,13 @@ export default function Focus({ habit }: FocusProps) {
                   />
                 </View>
               </View>
-              {!editedBaseMs && <Text className="mt-4 text-xs font-medium text-textMuted">
-                {!isUiReset && todayLoggedMs > 0
-                  ? `${formatDuration(todayLoggedMs)} logged today`
-                  : `Target: ${formatDuration(selectedGoalMins * 60 * 1000)} `}
-              </Text>}
+              {!editedBaseMs && (
+                <Text className="mt-4 text-xs font-medium text-textMuted">
+                  {!isUiReset && todayLoggedMs > 0
+                    ? `${formatDuration(todayLoggedMs)} logged today`
+                    : `Target: ${formatDuration(selectedGoalMins * 60 * 1000)} `}
+                </Text>
+              )}
 
               {/* Goal Presets (when idle) */}
               {!isCurrentHabitActive && (

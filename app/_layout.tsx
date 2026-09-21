@@ -16,7 +16,9 @@ import notifee, { EventType } from '@notifee/react-native';
 import { useFocusStore } from '@/store/focusStore';
 import { useStore } from '@/store/store';
 import { useHabitStore } from '@/store/habitStore';
-import { handleMarkCompletedAction, handleStartTimerAction } from '@/services/notificationService';
+import { handleMarkCompletedAction, handleStartTimerAction, initNotificationChannels } from '@/services/notificationService';
+import { completeTimerFromTrigger } from '@/services/sessionActions';
+import { getHabitById } from '@/db/habits';
 import BootScreen from '@/components/BootScreen';
 
 enableFreeze(false);
@@ -50,14 +52,13 @@ export default function RootLayout() {
   const hydrated = useStore((s) => s._hydrated);
   const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding);
   const [appReady, setAppReady] = useState(false);
-  const [rescheduleHabitId, setRescheduleHabitId] = useState<string | null>(null);
 
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
+    SplashScreen.hideAsync().catch((e) => { if (__DEV__) console.warn('[Startup] SplashScreen', e); });
   }, []);
 
   useEffect(() => {
-    SystemUI.setBackgroundColorAsync(Colors.background).catch(() => {});
+    SystemUI.setBackgroundColorAsync(Colors.background).catch((e) => console.warn('[Startup] SystemUI', e));
     if ((fontsLoaded || fontError) && hydrated) {
       setAppReady(true);
     }
@@ -65,17 +66,14 @@ export default function RootLayout() {
       const actionId = initial?.pressAction?.id;
       const habitId = initial?.notification?.data?.habitId;
       if (actionId === 'reschedule' && habitId) {
-        console.log('[InitialNotification] reschedule action, habitId:', habitId);
+        if (__DEV__) console.log('[InitialNotification] reschedule action, habitId:', habitId);
         router.navigate({
           pathname: '/habit/[id]',
           params: { id: habitId.toString(), reschedule: '1' },
         });
       } else if (actionId === 'default' && habitId) {
-        console.log('[InitialNotification] default press, habitId:', habitId);
+        if (__DEV__) console.log('[InitialNotification] default press, habitId:', habitId);
         try {
-          const { dbReady } = await import('@/db/database');
-          await dbReady;
-          const { getHabitById } = await import('@/db/habits');
           const habit = await getHabitById(Number(habitId));
           if (habit && habit.progressType !== 'check') {
             // build stack: home -> details -> goal so back goes goal->details->home
@@ -84,71 +82,22 @@ export default function RootLayout() {
           } else {
             router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
           }
-        } catch {
+        } catch (e) {
+          if (__DEV__) console.warn('[Startup] getInitialNotification habit lookup', e);
           router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
         }
       }
     });
   }, [fontsLoaded, fontError, hydrated]);
 
-  // useEffect(() => {
-  //   if (!appReady || !rescheduleHabitId) return;
-  //   router.navigate({
-  //     pathname: '/habit/[id]',
-  //     params: { id: rescheduleHabitId, reschedule: '1' },
-  //   });
-  //   setRescheduleHabitId(null);
-  // }, [appReady, rescheduleHabitId]);
-
   useEffect(() => {
     // Sequenced startup: nothing queries before the single connection is ready.
     dbReady
       .then(() => useStore.getState().hydrate())
       .then(() => useFocusStore.getState().loadActiveSession())
-      .then(async () => {
-        // Consume pending reschedule intent from background handler
-        try {
-          const { db } = await import('@/db/habits');
-          const row = db.getFirstSync<{ value: string }>(
-            `SELECT value FROM app_settings WHERE key = ?`,
-            ['pending_reschedule_habit_id']
-          );
-          if (row?.value) {
-            console.log('[Startup] pending_reschedule consumed, habitId:', row.value);
-            db.runSync(`DELETE FROM app_settings WHERE key = ?`, ['pending_reschedule_habit_id']);
-            setRescheduleHabitId(row.value);
-          }
-        } catch {}
-        // One-time migration: re-sync all reminder habits to pre-booked one-shot triggers
-        try {
-          const { db } = await import('@/db/habits');
-          const flag = db.getFirstSync<{ value: string }>(
-            `SELECT value FROM app_settings WHERE key = ?`,
-            ['reminder_migration_v1_done']
-          );
-          if (!flag) {
-            const { getAllHabits } = await import('@/db/habits');
-            const { syncHabitReminder } = await import('@/services/notificationService');
-            const habits = await getAllHabits();
-            for (const h of habits) {
-              if (h.reminder && h.time) {
-                await syncHabitReminder(h.id, h.name, h.time, h.occurrence, h.reminder).catch(
-                  () => {}
-                );
-              }
-            }
-            db.runSync(
-              `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-              ['reminder_migration_v1_done', '1']
-            );
-          }
-        } catch {}
-      })
-      .catch(() => {});
+      .catch((e) => console.warn('[Startup] dbReady chain', e));
     // Warm notification channels in background so first timer start is instant
-    import('@/services/notificationService')
-      .then((m) => m.initNotificationChannels().catch(() => {}))
-      .catch(() => {});
+    initNotificationChannels().catch((e) => console.warn('[Startup] initNotificationChannels', e));
 
     // Background timer watchdog — fires even when app is backgrounded via foreground service
     // (JS timers are throttled in background, so we poll every 1s; trigger handles exact alarm)
@@ -163,7 +112,7 @@ export default function RootLayout() {
           // Timer hit zero while backgrounded — complete same as foreground
           useFocusStore.getState().loadActiveSession();
         }
-      } catch {}
+      } catch (e) { console.warn('[Startup] bgInterval', e); }
     }, 1000);
 
     // Reactive AppState listener (§5) - sync store when returning to foreground
@@ -177,27 +126,29 @@ export default function RootLayout() {
     // Notifee notification action events (Pause, Resume, Stop, Mark Completed, Reschedule, Start, +1)
     const unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }) => {
       if (
-        type === EventType.TRIGGER_NOTIFICATION_CREATED &&
+        type === EventType.DELIVERED &&
         (detail.notification as any)?.data?.type === 'timer_complete'
       ) {
-        console.log('[Foreground] trigger timer_complete');
-        useFocusStore.getState().loadActiveSession();
+        if (__DEV__) console.log('[Foreground] delivered timer_complete');
+        completeTimerFromTrigger().then(() => {
+          useFocusStore.getState().loadActiveSession();
+        });
         return;
       }
       if (type === EventType.ACTION_PRESS && detail.pressAction?.id) {
         const actionId = detail.pressAction.id;
         if (actionId === 'pause') {
-          console.log('[Foreground] action: pause');
+          if (__DEV__) console.log('[Foreground] action: pause');
           useFocusStore.getState().pauseSession();
         } else if (actionId === 'resume') {
-          console.log('[Foreground] action: resume');
+          if (__DEV__) console.log('[Foreground] action: resume');
           useFocusStore.getState().resumeSession();
         } else if (actionId === 'stop') {
-          console.log('[Foreground] action: stop');
+          if (__DEV__) console.log('[Foreground] action: stop');
           useFocusStore.getState().stopSession();
         } else if (actionId === 'mark_completed') {
           const habitId = detail.notification?.data?.habitId;
-          console.log('[Foreground] action: mark_completed, habitId:', habitId);
+          if (__DEV__) console.log('[Foreground] action: mark_completed, habitId:', habitId);
           if (habitId) {
             handleMarkCompletedAction(
               parseInt(habitId as string, 10),
@@ -208,7 +159,7 @@ export default function RootLayout() {
           }
         } else if (actionId === 'reschedule') {
           const habitId = detail.notification?.data?.habitId;
-          console.log('[Foreground] action: reschedule, habitId:', habitId);
+          if (__DEV__) console.log('[Foreground] action: reschedule, habitId:', habitId);
           if (habitId) {
             if (detail.notification?.id)
               notifee.cancelNotification(detail.notification.id).catch(() => {});
@@ -219,7 +170,7 @@ export default function RootLayout() {
           }
         } else if (actionId === 'start_timer') {
           const habitId = detail.notification?.data?.habitId;
-          console.log('[Foreground] action: start_timer, habitId:', habitId);
+          if (__DEV__) console.log('[Foreground] action: start_timer, habitId:', habitId);
           if (habitId) {
             handleStartTimerAction(parseInt(habitId as string, 10), detail.notification?.id).then(
               () => {
@@ -231,11 +182,10 @@ export default function RootLayout() {
         }
       } else if (type === EventType.PRESS && detail.pressAction?.id === 'default') {
         const habitId = detail.notification?.data?.habitId;
-        console.log('[Foreground] default press, habitId:', habitId);
+        if (__DEV__) console.log('[Foreground] default press, habitId:', habitId);
         if (habitId) {
           (async () => {
             try {
-              const { getHabitById } = await import('@/db/habits');
               const habit = await getHabitById(Number(habitId));
               if (habit && habit.progressType !== 'check') {
                 router.navigate({
@@ -245,7 +195,8 @@ export default function RootLayout() {
               } else {
                 router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
               }
-            } catch {
+            } catch (e) {
+              if (__DEV__) console.warn('[Foreground] default press habit lookup', e);
               router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
             }
           })();

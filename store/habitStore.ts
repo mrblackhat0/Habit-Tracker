@@ -23,6 +23,7 @@ export interface HabitStoreState {
   habits: Habit[];
   todayHabits: TodayHabitItem[];
   archivedHabits: Habit[];
+  _habitsLoaded: boolean;
   loadHabits: () => Promise<void>;
   loadArchived: () => Promise<void>;
   addHabit: (habitData: CreateHabitInput) => Promise<Habit>;
@@ -40,12 +41,13 @@ export const useHabitStore = create<HabitStoreState>((set, get) => ({
   habits: [],
   todayHabits: [],
   archivedHabits: [],
+  _habitsLoaded: false,
 
   loadHabits: async () => {
     const { dbReady } = await import('../db/database');
     await dbReady;
     const [habits, todayHabits] = await Promise.all([getAllHabits(), getTodayHabitsWithLogs()]);
-    set({ habits, todayHabits });
+    set({ habits, todayHabits, _habitsLoaded: true });
   },
 
   loadArchived: async () => {

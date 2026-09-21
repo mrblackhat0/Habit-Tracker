@@ -28,6 +28,7 @@ export default function HabitDetailScreen() {
   const { id, reschedule } = useLocalSearchParams<{ id: string; reschedule?: string }>();
   const habitId = Number(id);
   const habit = useHabitStore((state) => state.habits.find((h) => h.id === habitId));
+  const habitsLoaded = useHabitStore((state) => state._habitsLoaded);
   const updateHabit = useHabitStore((state) => state.updateHabit);
   const toggleCompletion = useHabitStore((state) => state.toggleCompletion);
   const isTodayDone = useHabitStore(
@@ -77,6 +78,15 @@ export default function HabitDetailScreen() {
   }, [reschedule, habit?.id]);
 
   if (!habit) {
+    if (!habitsLoaded) {
+      return (
+        <View className="relative flex-1 items-center justify-center bg-background px-4">
+          <Stack.Screen options={{ title: 'Habit Detail', headerBackTitle: 'Back' }} />
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text className="mt-3 text-xs font-medium text-textMuted">Loading habit…</Text>
+        </View>
+      );
+    }
     return (
       <View className="relative flex-1 items-center justify-center bg-background px-4">
         <Stack.Screen options={{ title: 'Habit Detail', headerBackTitle: 'Back' }} />

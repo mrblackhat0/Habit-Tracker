@@ -1,4 +1,4 @@
-import { View, Text, Pressable, BackHandler } from 'react-native';
+import { View, Text, Pressable, BackHandler, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, router, Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ export default function GoalScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const habitId = Number(id);
   const habit = useHabitStore((state) => state.habits.find((h) => h.id === habitId));
+  const habitsLoaded = useHabitStore((state) => state._habitsLoaded);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -25,6 +26,15 @@ export default function GoalScreen() {
   }, [habitId]);
 
   if (!habit) {
+    if (!habitsLoaded) {
+      return (
+        <View className="flex-1 items-center justify-center bg-background px-4">
+          <Stack.Screen options={{ title: 'Goal', headerBackTitle: 'Back' }} />
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text className="mt-3 text-xs font-medium text-textMuted">Loading habit…</Text>
+        </View>
+      );
+    }
     return (
       <View className="flex-1 items-center justify-center bg-background px-4">
         <Stack.Screen options={{ title: 'Goal', headerBackTitle: 'Back' }} />

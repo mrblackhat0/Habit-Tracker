@@ -1,20 +1,11 @@
 import notifee, { EventType } from '@notifee/react-native';
 import {
-  pauseActiveSession,
-  resumeActiveSession,
-  resolveActiveSession,
-  getDailyTotalMs,
-  getActiveSession,
-} from '@/db/focus';
-import { getHabitById } from '@/db/habits';
-import {
-  updateSessionNotification,
-  stopSessionNotification,
   handleMarkCompletedAction,
   handleStartTimerAction,
 } from '../services/notificationService';
+import { pauseFromNotification, resumeFromNotification, stopFromNotification, completeTimerFromTrigger } from '../services/sessionActions';
+import { getHabitById } from '@/db/habits';
 import { router } from 'expo-router';
-import { getTodayDateStr } from '@/utils/dates';
 
 notifee.registerForegroundService(() => new Promise(() => {}));
 
@@ -23,26 +14,14 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
   try {
     const { dbReady } = require('@/db/database');
     await dbReady;
-  } catch {}
-  // Background timer completion — fires even if app is closed
-  // Trigger already displayed the final notification (same id as stop), just ensure DB is completed
+  } catch (e) { if (__DEV__) console.warn('[BG] dbReady', e); }
   if (
-    type === EventType.TRIGGER_NOTIFICATION_CREATED &&
+    type === EventType.DELIVERED &&
     detail.notification?.data?.type === 'timer_complete'
   ) {
-    console.log('[Background] trigger timer_complete');
+    if (__DEV__) console.log('[Background] delivered timer_complete');
     try {
-      const session = getActiveSession();
-      if (!session || session.mode !== 'timer' || !session.targetGoalMs) return;
-      let elapsed = session.accumulatedMs;
-      if (session.status === 'running') elapsed += Date.now() - session.startedAt;
-      if (elapsed + 500 < session.targetGoalMs) return; // not yet (clock drift guard)
-      // DB only — trigger's notification is already the final one (same id as stop), don't show duplicate
-      resolveActiveSession();
-      // Ensure trigger is cleaned up (already delivered)
-      try {
-        await notifee.cancelTriggerNotification(detail.notification.id);
-      } catch {}
+      await completeTimerFromTrigger();
     } catch (e) {
       console.warn('[timer_complete background]', e);
     }
@@ -50,7 +29,7 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
   }
   if (type === EventType.PRESS && detail.pressAction?.id === 'default') {
     const habitId = detail.notification?.data?.habitId;
-    console.log('[Background] default press, habitId:', habitId);
+    if (__DEV__) console.log('[Background] default press, habitId:', habitId);
     if (habitId) {
       try {
         const habit = await getHabitById(Number(habitId));
@@ -63,7 +42,8 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
         } else {
           router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
         }
-      } catch {
+      } catch (e) {
+        if (__DEV__) console.warn('[BG] default press habit lookup', e);
         router.navigate({ pathname: '/habit/[id]', params: { id: habitId.toString() } });
       }
     }
@@ -74,68 +54,34 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 
   try {
     if (actionId === 'pause') {
-      console.log('[Background] action: pause');
-      const paused = pauseActiveSession();
-      if (paused) {
-        const habit = await getHabitById(paused.habitId);
-        if (habit) await updateSessionNotification(paused, habit);
-      }
+      if (__DEV__) console.log('[Background] action: pause');
+      await pauseFromNotification();
     } else if (actionId === 'resume') {
-      console.log('[Background] action: resume');
-      const resumed = resumeActiveSession();
-      if (resumed) {
-        const habit = await getHabitById(resumed.habitId);
-        if (habit) await updateSessionNotification(resumed, habit);
-      }
+      if (__DEV__) console.log('[Background] action: resume');
+      await resumeFromNotification();
     } else if (actionId === 'stop') {
-      console.log('[Background] action: stop');
-      const result = resolveActiveSession(); // { habitId, durationMs } | null
-      if (result) {
-        const habit = await getHabitById(result.habitId);
-        if (habit) {
-          const todayStr = getTodayDateStr();
-          const dailyTotalMs = getDailyTotalMs(result.habitId, todayStr);
-          const sessionMs = result.durationMs ?? 0;
-          await stopSessionNotification(habit.id, habit.name, sessionMs, dailyTotalMs);
-        } else {
-          await notifee.stopForegroundService();
-        }
-      } else {
-        await notifee.stopForegroundService();
-      }
+      if (__DEV__) console.log('[Background] action: stop');
+      await stopFromNotification();
     } else if (actionId === 'mark_completed') {
       const habitId = detail.notification?.data?.habitId;
-      console.log('[Background] action: mark_completed, habitId:', habitId);
+      if (__DEV__) console.log('[Background] action: mark_completed, habitId:', habitId);
       if (habitId) {
         await handleMarkCompletedAction(parseInt(habitId, 10), detail.notification?.id);
       }
     } else if (actionId === 'reschedule') {
       const habitId = detail.notification?.data?.habitId;
-      console.log('[Background] action: reschedule, habitId:', habitId);
+      if (__DEV__) console.log('[Background] action: reschedule, habitId:', habitId);
       if (habitId) {
         if (detail.notification?.id)
-          notifee.cancelNotification(detail.notification.id).catch(() => {});
+          notifee.cancelNotification(detail.notification.id).catch((e) => { if (__DEV__) console.warn('[BG] cancelNotification', e); });
         router.navigate({
           pathname: '/habit/[id]',
           params: { id: String(habitId), reschedule: '1' },
         });
       }
-      // const notificationId = detail.notification?.id;
-      // if (notificationId) {
-      //   notifee.cancelNotification(notificationId).catch(() => {});
-      // }
-      // if (habitId) {
-      //   try {
-      //     const { db } = require('@/db/habits');
-      //     db.runSync(
-      //       `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      //       ['pending_reschedule_habit_id', String(habitId)]
-      //     );
-      //   } catch {}
-      // }
     } else if (actionId === 'start_timer') {
       const habitId = detail.notification?.data?.habitId;
-      console.log('[Background] action: start_timer, habitId:', habitId);
+      if (__DEV__) console.log('[Background] action: start_timer, habitId:', habitId);
       if (habitId) {
         await handleStartTimerAction(parseInt(habitId, 10), detail.notification?.id);
       }

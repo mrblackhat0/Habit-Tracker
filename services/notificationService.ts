@@ -133,9 +133,8 @@ export async function updateSessionNotification(
       let timestamp = now;
 
       if (session.mode === 'timer' && sessionTargetMs > 0) {
-        const remainingMs = Math.max(0, sessionTargetMs - currentElapsedMs);
-        // ceil to match in-app countdown (system chronometer truncates)
-        timestamp = now + Math.floor(remainingMs / 1000) * 1000;
+        // Absolute end time: consistent with scheduleTimerCompletion trigger
+        timestamp = session.startedAt + sessionTargetMs - session.accumulatedMs;
       } else {
         const totalElapsedMs = (freshStart ? 0 : previousLoggedMs) + currentElapsedMs;
         timestamp = now - totalElapsedMs;
@@ -236,18 +235,19 @@ export async function scheduleTimerCompletion(habit: Habit, session: ActiveSessi
       logMinsMs = Math.round((t?.loggedMinutes ?? 0) * 60) * 1000;
     } catch {}
     const previous = Math.max(dbTotal, logMinsMs);
-    // total after completion: previous + remaining (freshStart already baked into target)
-    const totalMs = previous + remaining;
-    // Delay 1s so foreground has chance to cancel and show its own (avoid double fire)
+    // Absolute end time: session started + target goal - already accumulated
+    const endTime = session.startedAt + session.targetGoalMs - session.accumulatedMs;
+    const totalMs = previous + session.targetGoalMs;
     const trigger: TimestampTrigger = {
       type: TriggerType.TIMESTAMP,
-      timestamp: now + remaining + 1000,
+      timestamp: endTime,
+      alarmManager: { type: AlarmType.SET_ALARM_CLOCK },
     };
     await notifee.createTriggerNotification(
       {
         id: notifId,
         title: habit.name,
-        body: `Time's up! ${formatDuration(remaining)} ✓ • today: ${formatDuration(totalMs)}`,
+        body: `Time's up! ${formatDuration(session.targetGoalMs)} ✓ • today: ${formatDuration(totalMs)}`,
         data: {
           habitId: String(habit.id),
           type: 'timer_complete',
@@ -557,9 +557,9 @@ export async function syncHabitReminder(
               actions,
             },
           },
-          trigger
-        );
-      } catch (e) {
+      trigger
+    );
+  } catch (e) {
         console.warn(`Failed to schedule reminder trigger for day ${dayOfWeek} week ${week}:`, e);
       }
     }

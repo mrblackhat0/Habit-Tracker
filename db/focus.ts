@@ -254,6 +254,10 @@ export function resolveActiveSession(): { habitId: number; durationMs: number } 
   if (session.status === 'running') {
     sessionDurationMs += now - session.startedAt;
   }
+  // Cap credited time for timer mode — never credit more than the goal
+  if (session.mode === 'timer' && session.targetGoalMs) {
+    sessionDurationMs = Math.min(sessionDurationMs, session.targetGoalMs);
+  }
 
   // Clear active session first (releases single-session lock)
   try {
